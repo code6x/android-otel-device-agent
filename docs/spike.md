@@ -111,7 +111,9 @@ force-stop of Q1): the system never killed the service in 24 h.
 
 Points per hour (own pipeline, 60 s interval = 60 per hour) next to the
 screen (`device.screen.on` averaged over the hour). From the battery level, the
-phone was on the charger from about 20:00 to about 04:00 UTC:
+phone was on the charger from about 20:00 (the level stopped falling at 26 %
+and rose to 100 %) to about 04:00 UTC. The hour ending 09:43 (cut2 and the
+restart of Q1) is left out:
 
 ```
 hour ending :43  10  11  12  13  14  15  16  17  18  19  20  21  22  23  00  01  02  03  04  05  06  07  08
@@ -137,26 +139,33 @@ queue folder and the phone state at the end could not be done: the phone's
 wireless debugging port had changed and no new port was given in time. The
 receiver data above stands in for it: its last own point (08:43:17 UTC on
 2026-11-12) came less than a minute before the end, so the own queue was
-sending and not holding a backlog.
+most likely sending on time, with no backlog.
 
 **Answer.**
 - **The foreground service stays alive for 24 h** on OxygenOS, with "Allow
   background activity" on (see the setup findings above). Without that setting
   it was frozen after 2 min.
 - **But the 60 s tick is not kept** when the phone is on battery with the screen
-  off: then only 22–30 ticks per hour came, 2–3 min apart (145 gaps over
-  120 s, at most 196 s). On the charger, also with the screen off (the
+  off: in the hours ending 13:43 to 16:43 only 22–30 ticks per hour came, 2–3
+  min apart (145 gaps over 120 s in the 24 h, at most 196 s). Other hours with
+  the screen mostly off came out better (40–57), so the CPU did not always
+  sleep. On the charger, also with the screen off (the
   hours ending 22:43 to 03:43 above), every tick came on time. The tick is a `Handler.postDelayed`
-  with no wake lock: its clock stops while the CPU sleeps, and on the charger
-  the CPU did not sleep. So the "at most 2 min apart" goal is **not met with this
+  with no wake lock, whose clock (`uptimeMillis`) stops while the CPU sleeps;
+  on the charger the CPU does not sleep. The data fits this, but it is not
+  proven: the phone's `samples.csv` (wall clock and elapsed time per tick)
+  could not be pulled at the end. So the "at most 2 min apart" goal is **not met with this
   code**.
-- The cause is the timer, not the service being killed, so the fix is in #2:
-  wake the CPU for each tick with an exact alarm
-  (`AlarmManager.setExactAndAllowWhileIdle`, needs `SCHEDULE_EXACT_ALARM` or
-  `USE_EXACT_ALARM`) or hold a partial wake lock for the few ms of a tick.
-  Android's Doze limits such alarms to about one per 9 min in deep idle for
-  apps that are not on the battery-optimization allow-list, so #2 asks for
-  that exemption and tests again on the kitchen display (HyperOS).
+- The service was not killed; the timer is late. So the fix is in #2: wake
+  the CPU for each tick with an exact alarm
+  (`AlarmManager.setExactAndAllowWhileIdle`), or hold a partial wake lock all
+  the time (simple, but it costs battery). An exact alarm needs
+  `SCHEDULE_EXACT_ALARM`: granted by default on Android 12, but on Android 14
+  and later the user must allow it (`USE_EXACT_ALARM` is for alarm and
+  calendar apps only). Doze limits such alarms to about one per 9 min in deep
+  idle for apps that are not on the battery-optimization allow-list; this app
+  was on it. This spike did not test the alarm: #2 tests it again, on the
+  kitchen display (HyperOS).
 
 ## Q3. OpAMP on Android
 
@@ -283,9 +292,10 @@ How OTLP turns into series:
 - **Service model: one foreground service, with a timer that wakes the CPU.**
   The foreground service lived 24 h on OxygenOS (Q2), but a `Handler` tick
   slows to 2–3 min on battery with the screen off. #2 schedules each reading
-  with an exact alarm (`setExactAndAllowWhileIdle`) or a short partial wake
-  lock, and stores the time of each reading so gaps show. WorkManager stays out
-  (15 min minimum). The setup checklist of #2 needs: OnePlus/OPPO "Allow
+  with an exact alarm (`setExactAndAllowWhileIdle`) or a partial wake lock held
+  all the time, and stores the time of each reading so gaps show. WorkManager stays out
+  (15 min minimum). The setup checklist of #2 needs: "Alarms & reminders"
+  (exact alarms) allowed on Android 14+; OnePlus/OPPO "Allow
   background activity"; Xiaomi Autostart and battery saver "No restrictions";
   "include this app" for a VPN with split tunneling. The 24 h test on HyperOS 2
   (Android 15) runs in #2, on the kitchen display.
