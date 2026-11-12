@@ -1,7 +1,7 @@
 # Spike report (issue #1)
 
-Status 2026-11-11: Q1, Q3 and Q4 are answered. Q2 (24 h) is still running; Q2
-and the decision for #2 come in the final follow-up.
+Status 2026-11-12: all four questions are answered; the decision for #2 is at
+the end.
 
 ## Setup
 
@@ -43,6 +43,8 @@ Settings changed on the phone for the test (undo after the spike):
 - Doze allow-list: `cmd deviceidle whitelist -dev.code6x.otelspike`.
 - App info → Battery → Allow background activity (set by hand).
 - VPN: the app is included in the split tunnel (set by hand).
+- "Keep screen on while charging" was turned on for the cut tests and off
+  again at 09:50 UTC on 2026-11-11 (nothing to undo).
 
 ## Q1. Disk buffer for metrics
 
@@ -89,21 +91,72 @@ the restart; no gap is over 120 s.)
 
 ## Q2. Staying alive (24 h, screen off)
 
-Running on the OnePlus since 2026-11-11 08:43 UTC. The result comes in the
-final follow-up.
-
 The 24 h test on a **Xiaomi phone with HyperOS 2 (Android 15) moves to #2**: it
-will be run on the kitchen display there.
+will be run on the kitchen display there. This spike ran it on a OnePlus Nord
+CE 2 Lite on OxygenOS (Android 12), from 2026-11-11 08:43:21 to 2026-11-12
+08:43:21 UTC, with the phone in normal daily use (on battery most of the day,
+on the charger at night).
 
-Early sign (2026-11-11 14:00 UTC, from the receiver's raw points; the phone's
-`samples.csv` was not pulled again): the service is alive and sends, but from
-about 10:50 UTC, with the screen off (`device.screen.on` = 0), the points of
-`spike.ticks` come only every 120–200 s instead of 60 s, in both pipelines
-(largest gap 196 s). The tick is a `Handler.postDelayed` with no wake lock, so
-it probably waits while the CPU sleeps. If `samples.csv` shows the same, the
-24 h test misses the "at most 2 min apart" goal with this code, and #2 needs a
-partial wake lock or an exact alarm (`setExactAndAllowWhileIdle`) for the
-tick.
+Raw points of `spike.ticks` in the receiver over the 24 h (`vmgaps.py`):
+
+```
+-- spike.buffer=own
+spike.ticks: 1189 points 08:43:22 -> 08:43:17 UTC, largest gap 196 s   (145 gaps > 120 s, median of those 157 s)
+-- spike.buffer=library
+spike.ticks: 1154 points 08:43:21 -> 08:42:38 UTC, largest gap 895 s  (the 895 s is the cut2 restart of Q1)
+```
+
+The counter of the own pipeline was reset only once, at 09:49:17 (the planned
+force-stop of Q1): the system never killed the service in 24 h.
+
+Points per hour (own pipeline, 60 s interval = 60 per hour) next to the
+screen (`device.screen.on` averaged over the hour). From the battery level, the
+phone was on the charger from about 20:00 to about 04:00 UTC:
+
+```
+hour ending :43  10  11  12  13  14  15  16  17  18  19  20  21  22  23  00  01  02  03  04  05  06  07  08
+points           59  44  28  22  25  23  30  57  40  61  55  56  61  61  61  61  61  61  58  58  60  49  34
+screen on       .81 .34 .18 .00 .16 .00 .07 .02 .15 .56 .29 .16 .00 .00 .00 .00 .00 .00 .41 .19 .60 .02 .29
+```
+
+Over the 24 h the screen was off about 70 % of the time
+(`avg_over_time(device.screen.on[24h])` = 0.31).
+
+Phone state, read at the start of the test (2026-11-11 08:44 UTC):
+
+```
+dumpsys deviceidle whitelist | grep otelspike  ->  user,dev.code6x.otelspike,<uid>
+am get-standby-bucket dev.code6x.otelspike    ->  5 (EXEMPTED)
+appops: RUN_ANY_IN_BACKGROUND: allow; START_FOREGROUND: allow (running)
+App info -> Battery -> Allow background activity: on (set by hand)
+```
+
+The Autostart state was not read (see below). The Doze allow-list entry was
+added by adb and did not help on its own (setup findings above). The final pull of `samples.csv`, the
+queue folder and the phone state at the end could not be done: the phone's
+wireless debugging port had changed and no new port was given in time. The
+receiver data above stands in for it: its last own point (08:43:17 UTC on
+2026-11-12) came less than a minute before the end, so the own queue was
+sending and not holding a backlog.
+
+**Answer.**
+- **The foreground service stays alive for 24 h** on OxygenOS, with "Allow
+  background activity" on (see the setup findings above). Without that setting
+  it was frozen after 2 min.
+- **But the 60 s tick is not kept** when the phone is on battery with the screen
+  off: then only 22–30 ticks per hour came, 2–3 min apart (145 gaps over
+  120 s, at most 196 s). On the charger, also with the screen off (the
+  hours ending 22:43 to 03:43 above), every tick came on time. The tick is a `Handler.postDelayed`
+  with no wake lock: its clock stops while the CPU sleeps, and on the charger
+  the CPU did not sleep. So the "at most 2 min apart" goal is **not met with this
+  code**.
+- The cause is the timer, not the service being killed, so the fix is in #2:
+  wake the CPU for each tick with an exact alarm
+  (`AlarmManager.setExactAndAllowWhileIdle`, needs `SCHEDULE_EXACT_ALARM` or
+  `USE_EXACT_ALARM`) or hold a partial wake lock for the few ms of a tick.
+  Android's Doze limits such alarms to about one per 9 min in deep idle for
+  apps that are not on the battery-optimization allow-list, so #2 asks for
+  that exemption and tests again on the kitchen display (HyperOS).
 
 ## Q3. OpAMP on Android
 
@@ -219,3 +272,28 @@ How OTLP turns into series:
   **`app.installation.id`**, a random id per install. That id is private data
   and adds a new series on each reinstall: #2 should drop it or make it
   optional.
+
+## Decision for #2
+
+- **Buffer: own file queue.** opentelemetry-android's disk buffering keeps
+  metrics over a network cut but loses what it has not sent when the app
+  restarts during a cut (Q1). #2 uses the own queue of `OwnQueue.kt`: one
+  OTLP/HTTP protobuf body per file, sent in order, deleted after a 2xx. Give
+  it a size cap (drop the oldest file) so a long cut cannot fill the disk.
+- **Service model: one foreground service, with a timer that wakes the CPU.**
+  The foreground service lived 24 h on OxygenOS (Q2), but a `Handler` tick
+  slows to 2–3 min on battery with the screen off. #2 schedules each reading
+  with an exact alarm (`setExactAndAllowWhileIdle`) or a short partial wake
+  lock, and stores the time of each reading so gaps show. WorkManager stays out
+  (15 min minimum). The setup checklist of #2 needs: OnePlus/OPPO "Allow
+  background activity"; Xiaomi Autostart and battery saver "No restrictions";
+  "include this app" for a VPN with split tunneling. The 24 h test on HyperOS 2
+  (Android 15) runs in #2, on the kitchen display.
+- **OpAMP client: yes.** `opentelemetry-opamp-client` works on Android over
+  WebSocket, applies a remote config and reports its hash (Q3). #2 keeps the
+  last applied config on the phone (the server may send an empty one after a
+  reconnect) and pins the OpenTelemetry core versions to the ones
+  opentelemetry-android uses.
+- **Receiver: OTLP into VictoriaMetrics works as it is** (Q4). #2 drops
+  `app.installation.id` from the resource (or makes it optional) and keeps a
+  list of the units, as VictoriaMetrics does not store them.
