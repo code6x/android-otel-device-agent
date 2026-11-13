@@ -40,8 +40,10 @@ class QueueSender(private val queue: FileQueue, private val poster: Poster = Htt
                     queue.remove(f)
                     sent++
                 }
-                // The receiver will never take this body: drop it, or it blocks the queue for ever.
-                code in 400..499 && code != 408 && code != 429 -> {
+                // The receiver says the body itself is bad and will never take it: drop it, or
+                // it blocks the queue for ever. Any other answer (3xx, 401, 403, 404, 408, 429,
+                // 5xx) may be a passing problem of the receiver or the network: keep the file.
+                code in DROP_CODES -> {
                     queue.remove(f)
                     dropped++
                     error = "HTTP $code, file dropped"
@@ -54,6 +56,11 @@ class QueueSender(private val queue: FileQueue, private val poster: Poster = Htt
         }
         return SendResult(sent, dropped, queue.files().size, error)
     }
+
+    companion object {
+        /** 400 Bad Request, 413 Content Too Large, 415, 422: this body can never be taken. */
+        val DROP_CODES = setOf(400, 413, 415, 422)
+    }
 }
 
 object HttpPoster : Poster {
@@ -61,6 +68,9 @@ object HttpPoster : Poster {
         val c = URL(target.url).openConnection() as HttpURLConnection
         try {
             c.requestMethod = "POST"
+            // A redirect would turn the POST into a GET without the body (a captive portal
+            // could answer 200 and the file would be lost). A 3xx stays a failure instead.
+            c.instanceFollowRedirects = false
             c.doOutput = true
             c.connectTimeout = target.timeoutSeconds * 1000
             c.readTimeout = target.timeoutSeconds * 1000

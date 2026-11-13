@@ -69,6 +69,9 @@ class ConfigReceiver : BroadcastReceiver() {
         } catch (e: IllegalArgumentException) {
             resultCode = Activity.RESULT_CANCELED
             "error: ${e.message}"
+        } catch (e: java.io.IOException) {
+            resultCode = Activity.RESULT_CANCELED
+            "error: could not save: ${e.message}"
         }
         resultData = msg
         Log.i(AgentService.TAG, "config broadcast: $msg")

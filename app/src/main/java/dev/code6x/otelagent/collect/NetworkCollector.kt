@@ -3,6 +3,7 @@ package dev.code6x.otelagent.collect
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.net.wifi.SupplicantState
 import android.net.wifi.WifiManager
 
 data class NetworkSnapshot(
@@ -33,9 +34,10 @@ class NetworkCollector(private val context: Context) : Collector {
         val wm = context.getSystemService(WifiManager::class.java)
         @Suppress("DEPRECATION")
         val info = if (wm?.isWifiEnabled == true) wm.connectionInfo else null
-        // networkId -1: not connected. RSSI -127: no value.
+        // Without location permission Android hides networkId (always -1), so "connected"
+        // comes from the network's transports and the supplicant state. RSSI -127: no value.
         @Suppress("DEPRECATION")
-        val wifiConnected = info != null && info.networkId != -1
+        val wifiConnected = "wifi" in types || info?.supplicantState == SupplicantState.COMPLETED
         return NetworkSnapshot(
             connected = caps != null,
             types = types,

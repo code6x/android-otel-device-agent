@@ -101,6 +101,18 @@ class QueueTest {
         assertEquals(0, r.left)
     }
 
+    @Test fun authErrorsNotFoundAndRedirectsKeepTheQueue() {
+        for (code in listOf(301, 302, 401, 403, 404, 405, 408, 500, 502)) {
+            val q = queue()
+            repeat(3) { q.add(byteArrayOf(it.toByte())) }
+            var posts = 0
+            val r = QueueSender(q, Poster { _, _ -> posts++; code }).drain(target)
+            assertEquals("HTTP $code keeps all files", 3, r.left)
+            assertEquals("HTTP $code stops at the first file", 1, posts)
+            assertEquals(0, r.dropped)
+        }
+    }
+
     @Test fun tooManyRequestsIsRetried() {
         val q = queue()
         q.add(byteArrayOf(7))

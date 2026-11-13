@@ -62,6 +62,9 @@ class AgentService : Service() {
     private lateinit var alarmIntent: PendingIntent
     private val plan = TickPlan()
 
+    /** Set in onDestroy; a tick still running then must not set an alarm or take a lock. */
+    @Volatile private var destroyed = false
+
     private val tickRunnable = Runnable { tick() }
 
     private val powerReceiver = object : BroadcastReceiver() {
@@ -121,6 +124,7 @@ class AgentService : Service() {
 
     override fun onDestroy() {
         Log.w(TAG, "service destroyed")
+        destroyed = true
         instance = null
         cancelAlarm()
         handler.removeCallbacksAndMessages(null)
@@ -131,8 +135,12 @@ class AgentService : Service() {
         }
         sendExecutor.shutdown()
         thread.quitSafely()
-        if (tickLock.isHeld) tickLock.release()
-        if (holdLock.isHeld) holdLock.release()
+        synchronized(this) {
+            // A schedule() that ran before `destroyed` was set may have set these again.
+            cancelAlarm()
+            if (tickLock.isHeld) tickLock.release()
+            if (holdLock.isHeld) holdLock.release()
+        }
         AgentState.timerMode = "stopped"
         super.onDestroy()
     }
@@ -211,7 +219,9 @@ class AgentService : Service() {
         schedule(plan.nextDelay(now, intervals()), loaded.config.wakePolicy.wakes(charging))
     }
 
+    @Synchronized
     private fun schedule(delay: Long?, wake: Boolean) {
+        if (destroyed) return
         cancelAlarm()
         handler.removeCallbacks(tickRunnable)
         if (delay == null) {
@@ -252,6 +262,7 @@ class AgentService : Service() {
 
     /** Called by [TickReceiver] when the exact alarm fires; the system holds a wake lock until we take ours. */
     fun onAlarm() {
+        if (destroyed) return
         tickLock.acquire(60_000)
         handler.post(tickRunnable)
     }
@@ -266,8 +277,12 @@ class AgentService : Service() {
         if (cfg.collectors["boot"]?.enabled == true && cfg.exporter.logsEndpoint.isNotEmpty()) {
             val attrs = mutableMapOf("device.boot.time" to now.bootTimeS.toString())
             now.bootCount?.let { attrs["device.boot.count"] = it.toString() }
-            logQueue.add(encoder.log("device.boot", "device boot", attrs, now.bootTimeS * 1000, System.currentTimeMillis()))
-            Log.i(TAG, "boot record queued (boot count ${now.bootCount})")
+            try {
+                logQueue.add(encoder.log("device.boot", "device boot", attrs, now.bootTimeS * 1000, System.currentTimeMillis()))
+                Log.i(TAG, "boot record queued (boot count ${now.bootCount})")
+            } catch (e: Exception) {
+                Log.e(TAG, "boot record not queued", e)
+            }
         }
         prefs.edit().apply {
             if (now.bootCount != null) putInt("boot_count", now.bootCount) else remove("boot_count")
