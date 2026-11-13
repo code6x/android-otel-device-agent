@@ -108,6 +108,41 @@ again) the exact alarm is back:
 11-13 13:15:20.003  2399  2418 I OtelAgent: tick: read battery, power, boot, network, device, thermal; charging=true wake=true
 ```
 
+### The other `wake_policy` values
+
+`always` on battery sets the exact alarm (uid `u0a148` is in the pending
+list); `never` on the charger sets none, and the app holds no wake lock (the
+one listed is the system's audio, uid 1041):
+
+```
+Broadcast completed: result=-1, data="ok: config imported; applied"
+== always (battery) 11:52:11
+  Pending alarms per uid: [1000:13, 1002:1, 1073:3, u0a79:1, u0a148:1]
+Wake Locks: size=0
+
+11-13 13:52:08.924  2960  2977 I OtelAgent: tick: read battery, power, boot, network, device, thermal; charging=false wake=true
+Broadcast completed: result=-1, data="ok: config imported; applied"
+== never (charger) 11:52:15
+  Pending alarms per uid: [1000:14, 1002:1, 1073:3, u0a79:1]
+Wake Locks: size=1
+  PARTIAL_WAKE_LOCK                 'AudioMix' ACQ=-222ms (uid=1041)
+11-13 13:52:12.068  2960  2977 I OtelAgent: tick: read battery, power, boot, network, device, thermal; charging=true wake=false
+```
+
+### Config import by file and by share sheet
+
+- **File:** the JSON file was put in the emulator's Downloads. In the app:
+  **Import config file**, then the file in the system file picker. Log:
+  `local config imported (0 warnings)`, and the receiver got the new
+  attribute (`count by (location)` of `hw.battery.charge` showed
+  `location="from-file"`).
+- **Share sheet / QR text:** `am start -a android.intent.action.SEND -t text/plain
+  --es android.intent.extra.TEXT '<json>'` to the app: it showed "Use this
+  config?" with Import / Cancel; after Import the local file had the new
+  value (`from-share`).
+- **adb broadcast:** used for every test above (answer
+  `data="ok: config imported; applied"`).
+
 ### 30 min network cut with an app restart in it
 
 ```

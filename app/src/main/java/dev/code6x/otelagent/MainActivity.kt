@@ -124,7 +124,9 @@ class MainActivity : Activity() {
             for (r in st.readings.filter { it.attributes.isEmpty() || it.value != 0.0 }) {
                 sb.append("  ").append(r.def.name)
                 if (r.attributes.isNotEmpty()) sb.append(r.attributes.values.joinToString(",", "{", "}"))
-                sb.append(" = ").append(fmt(r.value)).append(' ').append(r.def.unit).append('\n')
+                sb.append(" = ").append(fmt(r.value))
+                if (r.def.unit != "1") sb.append(' ').append(r.def.unit)
+                sb.append('\n')
             }
         }
         status.text = sb.toString()
