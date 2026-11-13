@@ -41,7 +41,7 @@ class QueueSender(private val queue: FileQueue, private val poster: Poster = Htt
                     sent++
                 }
                 // The receiver says the body itself is bad and will never take it: drop it, or
-                // it blocks the queue for ever. Any other answer (3xx, 401, 403, 404, 408, 429,
+                // it blocks the queue for ever. Any other answer (3xx, 401, 403, 404, 408, 415, 429,
                 // 5xx) may be a passing problem of the receiver or the network: keep the file.
                 code in DROP_CODES -> {
                     queue.remove(f)
@@ -58,8 +58,9 @@ class QueueSender(private val queue: FileQueue, private val poster: Poster = Htt
     }
 
     companion object {
-        /** 400 Bad Request, 413 Content Too Large, 415, 422: this body can never be taken. */
-        val DROP_CODES = setOf(400, 413, 415, 422)
+        /** 400 Bad Request, 413 Content Too Large, 422: this body can never be taken. (415 is about the
+         *  endpoint, not one body: every body has the same type, so it is kept.) */
+        val DROP_CODES = setOf(400, 413, 422)
     }
 }
 

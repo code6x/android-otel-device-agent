@@ -102,7 +102,7 @@ class QueueTest {
     }
 
     @Test fun authErrorsNotFoundAndRedirectsKeepTheQueue() {
-        for (code in listOf(301, 302, 401, 403, 404, 405, 408, 500, 502)) {
+        for (code in listOf(301, 302, 401, 403, 404, 405, 408, 415, 500, 502)) {
             val q = queue()
             repeat(3) { q.add(byteArrayOf(it.toByte())) }
             var posts = 0
