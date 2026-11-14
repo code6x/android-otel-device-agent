@@ -188,3 +188,55 @@ queue sent all 30 files in order and was empty.
 merging (`ConfigLoaderTest`), queue size cap, max age, order and the sender
 rules (`QueueTest`), each collector's mapping (`CollectorMappingTest`), the
 OTLP bodies (`OtlpEncoderTest`) and the timer plan (`TickPlanTest`).
+
+## Redmi Note 12S on HyperOS 2 (Android 15), 2026-11-14
+
+The phone runs a kiosk app and stays on the charger. The kiosk
+turns the screen on when it sees motion and off 60 s after the last motion.
+The signed release APK 0.1.0 was installed with `pm install` (the owner
+tapped Install). Config: the defaults plus `exporter.endpoint`,
+`exporter.logs_endpoint` and `resource.device.id`, imported by adb
+broadcast, so `wake_policy` is the default, `when_charging`.
+
+Phone settings changed for this app only (undo them in the same screens):
+
+- Security → Autostart: on.
+- App info → Battery saver: **No restrictions** (the app is now on the Doze
+  allow-list: `dumpsys deviceidle whitelist`; standby bucket 5 = exempted).
+- Alarms & reminders: allowed.
+
+The notification permission was not given: the foreground service runs
+without it, its notification is only hidden.
+
+### On the charger, screen off, `when_charging`, 1 h
+
+The service started at 07:10:45. The phone was off the charger for the first
+three readings, so the window starts at the first reading on the charger.
+`tools/vm_report.py` over 07:13:45–08:13:45:
+
+```
+window 2026-11-14 07:13:45 -> 2026-11-14 08:13:45 UTC
+readings: 60, first 2026-11-14 07:13:45, last 2026-11-14 08:12:48 UTC
+process starts (distinct device.agent.start_time): 1: 2026-11-14 07:10:45
+readings on the charger: 60, on battery: 0
+screen on: 0.07 of the readings
+timer wakes the CPU: 1.00 of the readings
+largest gap: 60 s
+gaps over 120 s on the charger: 0
+gaps over 120 s on the battery: 0
+readings per hour: 60
+```
+
+No gap over 120 s. The screen was on in about 7 % of the readings (4 of 60); the kiosk
+wakes it on motion. At the end, `dumpsys alarm` shows the app's exact alarm for
+the next reading:
+
+```
+ELAPSED_WAKEUP #4: Alarm{... dev.code6x.otelagent}
+  tag=*walarm*:dev.code6x.otelagent/.TickReceiver
+  type=ELAPSED_WAKEUP origWhen=+22s229ms window=0 exactAllowReason=allow-listed ...
+```
+
+`dumpsys power` "Wake Locks" lists only the kiosk app's locks: the app holds
+none between readings. Its short `otelagent:tick` lock (about 70 ms for each
+reading) shows only in the wake lock history.
