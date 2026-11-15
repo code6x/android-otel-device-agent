@@ -93,7 +93,7 @@ class AgentService : Service() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         store = ConfigStore(this)
-        collectors = Collectors.create(this)
+        collectors = Collectors.create(this) { loaded.config.batteryCurrentUnit }
         val queueRoot = File(filesDir, "queue")
         metricQueue = FileQueue(File(queueRoot, "metrics"), 0, 0)
         logQueue = FileQueue(File(queueRoot, "logs"), 0, 0)

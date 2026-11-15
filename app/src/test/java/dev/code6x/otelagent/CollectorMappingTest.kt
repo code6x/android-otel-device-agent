@@ -14,6 +14,7 @@ import dev.code6x.otelagent.collect.PowerSnapshot
 import dev.code6x.otelagent.collect.Reading
 import dev.code6x.otelagent.collect.ThermalCollector
 import dev.code6x.otelagent.collect.ThermalSnapshot
+import dev.code6x.otelagent.config.CurrentUnit
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -31,7 +32,7 @@ class CollectorMappingTest {
         val r = BatteryCollector.map(
             BatterySnapshot(
                 level = 87, scale = 100, voltageMv = 4123, temperatureTenthsC = 312, status = 2, plugged = 1,
-                health = 2, currentMicroA = -250_000, chargeCounterMicroAh = 3_100_000, cycleCount = 42,
+                health = 2, currentRaw = -250_000, chargeCounterMicroAh = 3_100_000, cycleCount = 42,
             ),
         )
         assertEquals(0.87, r.value("hw.battery.charge")!!, 1e-9)
@@ -46,6 +47,33 @@ class CollectorMappingTest {
         // Every state is sent, so a state that ends goes to 0 at once.
         assertEquals(0.0, r.value("device.battery.plug", "battery.plug" to "none")!!, 0.0)
         assertEquals(5, r.count { it.def.name == "device.battery.plug" })
+    }
+
+    private fun snap(raw: Long) = BatterySnapshot(50, 100, null, null, 2, 1, 2, raw, null, null)
+
+    @Test fun batteryCurrentInMilliAmps() {
+        // A phone that gives mA, charging at 1.5 A with a negative sign: the sign is kept.
+        assertEquals(-1.508, BatteryCollector.map(snap(-1508), CurrentUnit.MILLI_A).value("device.battery.current")!!, 1e-9)
+        assertEquals(-0.001508, BatteryCollector.map(snap(-1508), CurrentUnit.MICRO_A).value("device.battery.current")!!, 1e-12)
+    }
+
+    @Test fun batteryCurrentUnitChoice() {
+        fun unit(set: CurrentUnit, raw: Long?, maker: String, seen: Boolean = false) =
+            BatteryCollector.unit(set, raw, maker, seen)
+        // A set unit always wins.
+        assertEquals(CurrentUnit.MICRO_A, unit(CurrentUnit.MICRO_A, -1508, "OnePlus"))
+        assertEquals(CurrentUnit.MILLI_A, unit(CurrentUnit.MILLI_A, -250_000, "Google"))
+        // auto: known mA makers, any case.
+        assertEquals(CurrentUnit.MILLI_A, unit(CurrentUnit.AUTO, -1508, "OnePlus"))
+        assertEquals(CurrentUnit.MILLI_A, unit(CurrentUnit.AUTO, 300, "OPPO"))
+        assertEquals(CurrentUnit.MILLI_A, unit(CurrentUnit.AUTO, null, "realme"))
+        // auto: other makers (the emulator says "unknown") stay µA, as Android says.
+        assertEquals(CurrentUnit.MICRO_A, unit(CurrentUnit.AUTO, 900_000, "Google"))
+        assertEquals(CurrentUnit.MICRO_A, unit(CurrentUnit.AUTO, 1500, "unknown"))
+        // auto: a value too large to be mA is µA, also on a known maker, now and later.
+        assertEquals(CurrentUnit.MICRO_A, unit(CurrentUnit.AUTO, -50_000, "OnePlus"))
+        assertEquals(CurrentUnit.MILLI_A, unit(CurrentUnit.AUTO, -15_000, "OnePlus"))
+        assertEquals(CurrentUnit.MICRO_A, unit(CurrentUnit.AUTO, 500, "OnePlus", seen = true))
     }
 
     @Test fun batteryWithoutOptionalValues() {

@@ -42,7 +42,7 @@ object ConfigLoader {
             "attributes": {}
           },
           "collectors": {
-            "battery": {"enabled": true, "interval": 60},
+            "battery": {"enabled": true, "interval": 60, "current_unit": "auto"},
             "power": {"enabled": true, "interval": 60},
             "boot": {"enabled": true, "interval": 60},
             "network": {"enabled": true, "interval": 60},
@@ -109,7 +109,9 @@ object ConfigLoader {
 
     private fun known(p: List<String>): Boolean {
         if (FREE_MAPS.any { p.size == it.size + 1 && p.subList(0, it.size) == it }) return true
-        if (p.size == 3 && p[0] == "collectors") return p[1] in AgentConfig.COLLECTORS && p[2] in setOf("enabled", "interval")
+        if (p.size == 3 && p[0] == "collectors") {
+            return (p[1] in AgentConfig.COLLECTORS && p[2] in setOf("enabled", "interval")) || p in defaultsLayer.keys
+        }
         return p in defaultsLayer.keys
     }
 
@@ -152,6 +154,8 @@ object ConfigLoader {
         val wakeKey = str("wake_policy")
         val wake = WakePolicy.parse(wakeKey)
             ?: throw ConfigException("wake_policy: must be one of ${WakePolicy.entries.joinToString { it.key }}")
+        val unit = CurrentUnit.parse(str("collectors", "battery", "current_unit"))
+            ?: throw ConfigException("collectors > battery > current_unit: must be one of ${CurrentUnit.entries.joinToString { it.key }}")
         val collectors = AgentConfig.COLLECTORS.associateWith { c ->
             CollectorConfig(
                 enabled = bool("collectors", c, "enabled"),
@@ -174,6 +178,7 @@ object ConfigLoader {
                 maxAgeSeconds = long("buffer", "max_age", min = 60, max = 90L * 86400),
             ),
             wakePolicy = wake,
+            batteryCurrentUnit = unit,
         )
     }
 
