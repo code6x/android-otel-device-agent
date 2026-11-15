@@ -240,3 +240,38 @@ ELAPSED_WAKEUP #4: Alarm{... dev.code6x.otelagent}
 `dumpsys power` "Wake Locks" lists only the kiosk app's locks: the app holds
 none between readings. Its short `otelagent:tick` lock (about 70 ms for each
 reading) shows only in the wake lock history.
+
+### 24 h, screen off most of the time, default `wake_policy`
+
+`tools/vm_report.py` over 24 h from the first reading (2026-11-14 07:10:45 to
+2026-11-15 07:10:45 UTC):
+
+```
+window 2026-11-14 07:10:45 -> 2026-11-15 07:10:45 UTC
+readings: 1439, first 2026-11-14 07:10:45, last 2026-11-15 07:09:50 UTC
+process starts (distinct device.agent.start_time): 1: 2026-11-14 07:10:45
+readings on the charger: 1436, on battery: 3
+screen on: 0.10 of the readings
+timer wakes the CPU: 1.00 of the readings
+largest gap: 60 s
+gaps over 120 s on the charger: 0
+gaps over 120 s on the battery: 0
+readings per hour: 60 60 60 60 60 60 60 60 60 60 60 60 60 60 60 60 60 60 60 60 60 60 59 60
+```
+
+- **One process start**: the service was not killed in 24 h. The same
+  process was still running on 2026-11-15 19:50 UTC.
+- **Gaps over 120 s**: none, on the charger (1436 readings) and on battery
+  (3 readings). The largest gap is 60 s. The one hour with 59 readings is
+  only where the window starts and ends between two readings.
+- The phone was on battery only for the first three readings (07:10:45 to
+  07:12:46), then on the charger. In those three readings
+  `device.agent.wake` is 0: with `when_charging` the timer did not wake the
+  CPU on battery. "1.00" above is 1436 of 1439, rounded.
+- The screen was on in about 10 % of the readings (the kiosk turns it on
+  when it sees motion).
+
+At the end, `dumpsys alarm` still shows the app's exact alarm for the next
+reading (`ELAPSED_WAKEUP ... dev.code6x.otelagent/.TickReceiver ...
+exactAllowReason=allow-listed`), and `dumpsys power` "Wake Locks" lists only
+the system's `dream:doze` lock and the kiosk app's lock: none from the app.
