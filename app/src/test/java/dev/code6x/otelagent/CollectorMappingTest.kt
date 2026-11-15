@@ -67,11 +67,12 @@ class CollectorMappingTest {
         assertEquals(CurrentUnit.MILLI_A, unit(CurrentUnit.AUTO, -1508, "OnePlus"))
         assertEquals(CurrentUnit.MILLI_A, unit(CurrentUnit.AUTO, 300, "OPPO"))
         assertEquals(CurrentUnit.MILLI_A, unit(CurrentUnit.AUTO, null, "realme"))
-        // auto: other makers (the emulator says "Google") stay µA, as Android says.
+        // auto: other makers (the emulator says "unknown") stay µA, as Android says.
         assertEquals(CurrentUnit.MICRO_A, unit(CurrentUnit.AUTO, 900_000, "Google"))
-        assertEquals(CurrentUnit.MICRO_A, unit(CurrentUnit.AUTO, 1500, "samsung"))
+        assertEquals(CurrentUnit.MICRO_A, unit(CurrentUnit.AUTO, 1500, "unknown"))
         // auto: a value too large to be mA is µA, also on a known maker, now and later.
-        assertEquals(CurrentUnit.MICRO_A, unit(CurrentUnit.AUTO, -10_000, "OnePlus"))
+        assertEquals(CurrentUnit.MICRO_A, unit(CurrentUnit.AUTO, -50_000, "OnePlus"))
+        assertEquals(CurrentUnit.MILLI_A, unit(CurrentUnit.AUTO, -15_000, "OnePlus"))
         assertEquals(CurrentUnit.MICRO_A, unit(CurrentUnit.AUTO, 500, "OnePlus", seen = true))
     }
 

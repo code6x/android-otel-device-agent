@@ -161,11 +161,13 @@ OnePlus Nord CE 2 Lite. Read as µA, that value is 1000 times too small.
 
 - `uA` or `mA`: the raw value is always read in this unit.
 - `auto` (default), in this order:
-  1. A raw value of 10000 or more (in size) is µA, because 10000 mA (10 A)
-     is not a real phone current. After one such value, the app reads µA
+  1. A raw value of 50000 or more (in size) is µA, because 50000 mA (50 A)
+     is not a real phone current, even with 240 W fast charging. After one such value, the app reads µA
      until it restarts.
   2. On phones made by OnePlus, OPPO or realme (`Build.MANUFACTURER`), mA.
-     These makers share one battery service that gives mA.
+     These makers share one battery service that gives mA. If such a phone
+     gives µA, a current below 50 mA reads 1000 times too large until the
+     first value of 50000 or more; set `uA` then.
   3. On all other phones, µA, as Android says.
 
 If the value is wrong on your phone (about 1000 times too small or too

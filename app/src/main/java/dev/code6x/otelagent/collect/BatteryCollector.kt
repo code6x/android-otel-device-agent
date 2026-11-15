@@ -69,8 +69,8 @@ class BatteryCollector(private val context: Context, private val currentUnit: ()
             else -> "unknown"
         }
 
-        /** A raw value this large (10 A if it were mA) can only be µA. */
-        const val MICRO_A_MIN = 10_000L
+        /** A raw value this large (50 A if it were mA, more than even 240 W fast charging) can only be µA. */
+        const val MICRO_A_MIN = 50_000L
 
         /** Makers whose phones are known to give mA (OnePlus, OPPO and realme share one battery service). */
         val MILLI_A_MAKERS = setOf("oneplus", "oppo", "realme")
