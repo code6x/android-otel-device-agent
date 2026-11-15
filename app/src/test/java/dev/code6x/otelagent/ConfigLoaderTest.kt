@@ -2,6 +2,7 @@ package dev.code6x.otelagent
 
 import dev.code6x.otelagent.config.ConfigException
 import dev.code6x.otelagent.config.ConfigLoader
+import dev.code6x.otelagent.config.CurrentUnit
 import dev.code6x.otelagent.config.Source
 import dev.code6x.otelagent.config.WakePolicy
 import org.junit.Assert.assertEquals
@@ -36,6 +37,19 @@ class ConfigLoaderTest {
         assertEquals(20L * 1024 * 1024, c.buffer.maxBytes)
         assertEquals(7L * 86400, c.buffer.maxAgeSeconds)
         assertTrue(c.attributes.isEmpty())
+        assertEquals(CurrentUnit.AUTO, c.batteryCurrentUnit)
+    }
+
+    @Test fun batteryCurrentUnitValues() {
+        fun unit(v: String) = local("""{"collectors": {"battery": {"current_unit": "$v"}}}""").config.batteryCurrentUnit
+        assertEquals(CurrentUnit.AUTO, unit("auto"))
+        assertEquals(CurrentUnit.MICRO_A, unit("uA"))
+        assertEquals(CurrentUnit.MILLI_A, unit("mA"))
+        assertTrue(local("""{"collectors": {"battery": {"current_unit": "mA"}}}""").warnings.isEmpty())
+        assertRejected("""{"collectors": {"battery": {"current_unit": "MA"}}}""", "current_unit")
+        assertRejected("""{"collectors": {"battery": {"current_unit": 1000}}}""", "current_unit")
+        // Only the battery collector has this key.
+        assertEquals(1, local("""{"collectors": {"power": {"current_unit": "mA"}}}""").warnings.size)
     }
 
     @Test fun localFileOverridesDefaultsAndKeepsSources() {

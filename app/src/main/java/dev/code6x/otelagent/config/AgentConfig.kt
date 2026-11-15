@@ -19,6 +19,18 @@ enum class WakePolicy(val key: String) {
     }
 }
 
+/** Unit of the raw BATTERY_PROPERTY_CURRENT_NOW value. Android says µA; some phones give mA. */
+enum class CurrentUnit(val key: String) {
+    AUTO("auto"),
+    MICRO_A("uA"),
+    MILLI_A("mA"),
+    ;
+
+    companion object {
+        fun parse(key: String): CurrentUnit? = entries.firstOrNull { it.key == key }
+    }
+}
+
 data class ExporterConfig(
     /** Full URL of the OTLP/HTTP metrics endpoint. Empty: data stays in the queue. */
     val endpoint: String,
@@ -40,6 +52,7 @@ data class AgentConfig(
     val collectors: Map<String, CollectorConfig>,
     val buffer: BufferConfig,
     val wakePolicy: WakePolicy,
+    val batteryCurrentUnit: CurrentUnit = CurrentUnit.AUTO,
 ) {
     fun collector(name: String): CollectorConfig =
         collectors[name] ?: CollectorConfig(enabled = false, intervalSeconds = DEFAULT_INTERVAL)

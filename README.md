@@ -43,7 +43,7 @@ else `device.*`.
 | battery | `hw.battery.charge` | `1` | | Battery level, 0 to 1 (0.87 = 87 %) |
 | battery | `device.battery.voltage` | `V` | | Battery voltage |
 | battery | `device.battery.temperature` | `Cel` | | Battery temperature, °C |
-| battery | `device.battery.current` | `A` | | Battery current. Positive is into the battery on most phones; some phones use the other sign |
+| battery | `device.battery.current` | `A` | | Battery current. The sign is kept as the phone gives it: positive is into the battery on most phones, but some phones (for example OnePlus) use the other sign. The unit of the raw value is chosen by `collectors.battery.current_unit`: see [Battery current unit](#battery-current-unit) |
 | battery | `device.battery.charge_counter` | `A.h` | | Remaining charge |
 | battery | `device.battery.cycle_count` | `{cycle}` | | Charge cycles (Android 14+, when the phone reports it) |
 | battery | `device.battery.status` | `1` | `battery.status`: `charging`, `discharging`, `not_charging`, `full`, `unknown` | 1 for the current status, 0 for the others |
@@ -112,7 +112,7 @@ default. Example (all keys):
     "attributes": { "location": "lobby" }
   },
   "collectors": {
-    "battery": { "enabled": true, "interval": 60 },
+    "battery": { "enabled": true, "interval": 60, "current_unit": "auto" },
     "power":   { "enabled": true, "interval": 60 },
     "boot":    { "enabled": true, "interval": 300 },
     "network": { "enabled": true, "interval": 60 },
@@ -138,16 +138,38 @@ default. Example (all keys):
 | `resource.attributes` | none | More resource attributes (text values) |
 | `collectors.NAME.enabled` | `true` | NAME is `battery`, `power`, `boot`, `network`, `device` or `thermal` |
 | `collectors.NAME.interval` | `60` | Seconds, 10–86400 |
+| `collectors.battery.current_unit` | `auto` | Unit of the raw battery current: `auto`, `uA` or `mA`; see [Battery current unit](#battery-current-unit) |
 | `buffer.max_bytes` | `20971520` (20 MiB) | Disk queue size cap. When it is full, the oldest file is dropped first |
 | `buffer.max_age` | `604800` (7 days) | Seconds. Older queue files are dropped |
 | `wake_policy` | `when_charging` | `never`, `when_charging` or `always`; see below |
 
-A wrong value (a bad type, a number out of range, an unknown `wake_policy`)
+A wrong value (a bad type, a number out of range, an unknown `wake_policy`
+or `current_unit`)
 rejects the whole import, and the config in use stays as it was. An unknown
 key is ignored with a warning.
 
 The app screen shows the config in use, each value with where it came from
 (`default` or `local file`).
+
+### Battery current unit
+
+Android says the raw battery current (`BATTERY_PROPERTY_CURRENT_NOW`) is in
+microamperes (µA). Some phones give milliamperes (mA) instead, for example a
+OnePlus Nord CE 2 Lite. Read as µA, that value is 1000 times too small.
+
+`collectors.battery.current_unit` sets the unit:
+
+- `uA` or `mA`: the raw value is always read in this unit.
+- `auto` (default), in this order:
+  1. A raw value of 10000 or more (in size) is µA, because 10000 mA (10 A)
+     is not a real phone current. After one such value, the app reads µA
+     until it restarts.
+  2. On phones made by OnePlus, OPPO or realme (`Build.MANUFACTURER`), mA.
+     These makers share one battery service that gives mA.
+  3. On all other phones, µA, as Android says.
+
+If the value is wrong on your phone (about 1000 times too small or too
+large), set `uA` or `mA`. The sign is never changed.
 
 ### Import the config
 
