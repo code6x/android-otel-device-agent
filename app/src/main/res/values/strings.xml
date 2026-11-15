@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">OTel device agent</string>
+    <string name="channel_name">Telemetry service</string>
+    <string name="notification_text">Reads device health and sends it over OTLP</string>
+</resources>
