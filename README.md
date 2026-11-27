@@ -123,7 +123,8 @@ default. Example (all keys):
     "max_bytes": 20971520,
     "max_age": 604800
   },
-  "wake_policy": "when_charging"
+  "wake_policy": "when_charging",
+  "opamp": { "enabled": true, "endpoint": "wss://opamp.example.com/v1/opamp" }
 }
 ```
 
@@ -142,6 +143,8 @@ default. Example (all keys):
 | `buffer.max_bytes` | `20971520` (20 MiB) | Disk queue size cap. When it is full, the oldest file is dropped first |
 | `buffer.max_age` | `604800` (7 days) | Seconds. Older queue files are dropped |
 | `wake_policy` | `when_charging` | `never`, `when_charging` or `always`; see below |
+| `opamp.enabled` | `true` | `false`: no OpAMP connection, and the stored OpAMP config is not used. See [Remote config](#remote-config) |
+| `opamp.endpoint` | empty | OpAMP server: `ws://` or `wss://` (WebSocket), `http://` or `https://` (polling every 30 s). Empty: OpAMP is off |
 
 A wrong value (a bad type, a number out of range, an unknown `wake_policy`
 or `current_unit`)
@@ -149,7 +152,7 @@ rejects the whole import, and the config in use stays as it was. An unknown
 key is ignored with a warning.
 
 The app screen shows the config in use, each value with where it came from
-(`default` or `local file`).
+(`default`, `local file`, `managed` or `OpAMP`).
 
 ### Battery current unit
 
@@ -209,6 +212,99 @@ Only the adb shell can send this broadcast: the receiver asks for the
 A new config takes effect at once: all collectors read again with the new
 settings. A collector that is turned off sends nothing from then on.
 
+## Remote config
+
+Two standard ways change the config without touching the phone. The layers,
+later wins: **defaults → local file → managed configurations → OpAMP**. Each
+layer may set only some keys. A layer that is wrong is not used (the screen
+shows a warning), and the layers under it stay in use.
+
+### Managed configurations
+
+A device admin (MDM / EMM, for example Android Enterprise) sets these
+[managed configurations](https://developer.android.com/work/managed-configurations)
+(`res/xml/app_restrictions.xml`). The app reads them at start and again when
+the admin changes them (no restart).
+
+| Key | Type | Sets |
+|---|---|---|
+| `config_json` | text | A whole config document, the same shape as the local file. The keys below win over it |
+| `exporter_endpoint` | text | `exporter.endpoint` |
+| `interval` | number | `collectors.NAME.interval` of every collector |
+| `wake_policy` | choice | `wake_policy` |
+| `opamp_enabled` | choice (`true`, `false`) | `opamp.enabled` |
+| `opamp_endpoint` | text | `opamp.endpoint` |
+
+Empty text, `0` and an empty choice mean "not set": some admin tools send
+every key.
+
+**Test it on an emulator** (never on a phone in use: a device owner controls
+the whole phone). The repo has a small test device owner,
+`tools/testowner`; [TestDPC](https://github.com/googlesamples/android-testdpc)
+works too ("Managed configurations" screen). The emulator must have no
+accounts.
+
+```bash
+./gradlew :app:assembleDebug :testowner:assembleDebug
+adb install app/build/outputs/apk/debug/app-debug.apk
+adb install tools/testowner/build/outputs/apk/debug/testowner-debug.apk
+adb shell dpm set-device-owner dev.code6x.testowner/.Admin
+# Start the agent (app or SET_CONFIG broadcast), then set the managed configurations:
+adb shell am broadcast -a dev.code6x.testowner.SET -n dev.code6x.testowner/.SetRestrictions \
+  --ei interval 30 --es wake_policy always
+```
+
+Each `SET` replaces all managed configurations; a key not given is removed.
+logcat then shows `managed configurations changed` and
+`config: ... wake_policy=always ...`, and the readings come every 30 s. The app
+screen shows these values with `[managed]`. To remove the test owner:
+`adb shell dpm remove-active-admin dev.code6x.testowner/.Admin`.
+
+### OpAMP
+
+With `opamp.endpoint` set (and `opamp.enabled` not `false`), the app connects
+to an [OpAMP](https://opentelemetry.io/docs/specs/opamp/) server with the
+`opentelemetry-opamp-client` of opentelemetry-java-contrib. The server sends
+a config document of the same shape as the local file, as the config file
+with the name `""` (or as the only file).
+
+- **A good config** (it parses, and an exporter endpoint is set after the
+  merge) is saved on the phone and used at once. The app reports
+  `APPLIED` with the config hash.
+- **A wrong config** is refused: the app reports `FAILED` with the reason,
+  and the last good config stays.
+- **An empty config** changes nothing. The server sends one, for example,
+  when it has no config for this agent, also after a reconnect or a restart.
+  The last good config stays.
+- The OpAMP config may not change `opamp.*` keys (a server cannot cut itself
+  off). When OpAMP is turned off, the saved OpAMP config is not used either.
+
+The app also reports its effective config (header values hidden) and its
+health: healthy (the last export worked), start time, last error, and a status
+text with the app version, the last export time and the queue size. The
+version is also the `service.version` attribute.
+
+**Test it with the opamp-go example server** (no TLS), on an emulator:
+
+```bash
+git clone https://github.com/open-telemetry/opamp-go.git
+cd opamp-go
+docker build -t opamp-example -f internal/examples/Dockerfile.server .
+docker run --rm -p 127.0.0.1:4320:4320 -p 127.0.0.1:4321:4321 opamp-example -no-tls
+```
+
+1. Set `"opamp": {"endpoint": "ws://10.0.2.2:4320/v1/opamp"}` and an exporter
+   endpoint in the local file (10.0.2.2 is the computer, seen from the emulator).
+2. Open http://localhost:4321, open the agent (`service.name` =
+   `android-otel-device-agent`), and save a config in "Additional
+   Configuration", for example `{"collectors": {"battery": {"interval": 15}}}`.
+3. The app applies it: logcat `OpAMP config applied, hash ...`. The server
+   page shows the new "Current Effective Configuration", "Up" (healthy) and
+   "Up since"; the server log shows
+   `RemoteConfigStatus=APPLIED, RemoteConfigStatusHash=...`.
+4. Save `{"wake_policy": "sometimes"}`: logcat `OpAMP config refused`, the
+   server log `RemoteConfigStatus=FAILED`, and the last config stays.
+
 ## `wake_policy`: waking the CPU
 
 When the phone is on battery with the screen off, the CPU sleeps, and a
@@ -259,7 +355,10 @@ the Android screen for each item where one exists.
 ```
 
 The `spike/` folder is the separate spike project of issue #1; it is not
-part of the app build. Releases: [`docs/release.md`](docs/release.md).
+part of the app build. `tools/testowner` is a test device owner for the
+emulator ([Managed configurations](#managed-configurations)); it is not
+released. Test records: [`docs/mvp-tests.md`](docs/mvp-tests.md),
+[`docs/remote-config-tests.md`](docs/remote-config-tests.md). Releases: [`docs/release.md`](docs/release.md).
 Test results of the MVP: [`docs/mvp-tests.md`](docs/mvp-tests.md).
 
 ## License
