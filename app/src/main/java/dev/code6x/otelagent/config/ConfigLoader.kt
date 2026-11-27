@@ -198,10 +198,23 @@ object ConfigLoader {
         )
     }
 
+    private fun hidden(entry: ConfigEntry) =
+        entry.path.size == 3 && entry.path[0] == "exporter" && entry.path[1] == "headers"
+
+    /** The config in use as one JSON document (for OpAMP). Header values are hidden. */
+    fun effectiveJson(entries: List<ConfigEntry>): String {
+        val root = JSONObject()
+        for (e in entries) {
+            var o = root
+            for (k in e.path.dropLast(1)) o = o.optJSONObject(k) ?: JSONObject().also { o.put(k, it) }
+            o.put(e.path.last(), if (hidden(e)) "(hidden)" else e.value)
+        }
+        return root.toString()
+    }
+
     /** Text for the screen: header values are hidden, as they often hold a token. */
     fun display(entry: ConfigEntry): String {
-        val hidden = entry.path.size == 3 && entry.path[0] == "exporter" && entry.path[1] == "headers"
-        val value = if (hidden) "(hidden)" else if (entry.value is String) "\"${entry.value}\"" else entry.value.toString()
+        val value = if (hidden(entry)) "(hidden)" else if (entry.value is String) "\"${entry.value}\"" else entry.value.toString()
         return "${entry.key} = $value  [${entry.source.label}]"
     }
 }

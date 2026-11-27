@@ -18,4 +18,5 @@ object AgentState {
     @Volatile var timerMode = ""
     @Volatile var queueBytes = 0L
     @Volatile var queueFiles = 0
+    @Volatile var opampStatus = "off"
 }

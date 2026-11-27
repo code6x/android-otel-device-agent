@@ -109,4 +109,12 @@ class LayersTest {
         } catch (_: ConfigException) {
         }
     }
+
+    @Test fun effectiveJson_hidesHeaders() {
+        val l = Layers.merge(listOf(Source.LOCAL_FILE to """{"exporter": {"headers": {"Authorization": "Bearer x"}}}"""), null)
+        val j = org.json.JSONObject(dev.code6x.otelagent.config.ConfigLoader.effectiveJson(l.entries))
+        assertEquals("(hidden)", j.getJSONObject("exporter").getJSONObject("headers").getString("Authorization"))
+        assertEquals("when_charging", j.getString("wake_policy"))
+        assertEquals(60, j.getJSONObject("collectors").getJSONObject("battery").getInt("interval"))
+    }
 }

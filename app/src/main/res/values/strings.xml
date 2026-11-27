@@ -3,4 +3,39 @@
     <string name="app_name">OTel device agent</string>
     <string name="channel_name">Telemetry service</string>
     <string name="notification_text">Reads device health and sends it over OTLP</string>
+
+    <!-- Managed configurations (res/xml/app_restrictions.xml) -->
+    <string name="r_config_json">Config (JSON)</string>
+    <string name="r_config_json_d">A whole config document, the same shape as the local file. The keys below win over it.</string>
+    <string name="r_endpoint">OTLP metrics endpoint</string>
+    <string name="r_endpoint_d">Full URL of the OTLP/HTTP metrics endpoint.</string>
+    <string name="r_interval">Interval (seconds)</string>
+    <string name="r_interval_d">Reading interval of every collector, 10 to 86400. 0: not set.</string>
+    <string name="r_wake_policy">Wake policy</string>
+    <string name="r_opamp_enabled">OpAMP</string>
+    <string name="r_opamp_endpoint">OpAMP server</string>
+    <string name="r_opamp_endpoint_d">ws://, wss:// (WebSocket) or http://, https:// (polling) URL of the OpAMP server.</string>
+    <string name="not_set">(not set)</string>
+    <string-array name="r_wake_policy_names">
+        <item>@string/not_set</item>
+        <item>never</item>
+        <item>when_charging</item>
+        <item>always</item>
+    </string-array>
+    <string-array name="r_wake_policy_values">
+        <item></item>
+        <item>never</item>
+        <item>when_charging</item>
+        <item>always</item>
+    </string-array>
+    <string-array name="r_opamp_enabled_names">
+        <item>@string/not_set</item>
+        <item>on</item>
+        <item>off</item>
+    </string-array>
+    <string-array name="r_opamp_enabled_values">
+        <item></item>
+        <item>true</item>
+        <item>false</item>
+    </string-array>
 </resources>

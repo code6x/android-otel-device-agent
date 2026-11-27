@@ -104,6 +104,7 @@ class MainActivity : Activity() {
         sb.append("Service: ").append(if (running) "running since ${time(AgentState.processStartMs)}" else "stopped").append('\n')
         sb.append("Timer: ").append(AgentState.timerMode.ifEmpty { "-" }).append('\n')
         sb.append("Endpoint: ").append(if (loaded.config.exporter.endpoint.isEmpty()) "not set (data stays in the queue)" else loaded.config.exporter.endpoint).append('\n')
+        sb.append("OpAMP: ").append(if (!loaded.config.opamp.on) "off" else if (running) AgentState.opampStatus else "on, not running").append('\n')
         sb.append("Last export: ").append(time(AgentState.lastExportMs))
         if (AgentState.lastExportResult.isNotEmpty()) sb.append(" (").append(AgentState.lastExportResult).append(')')
         sb.append('\n')
