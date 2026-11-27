@@ -88,6 +88,12 @@ class LayersTest {
         assertTrue(l.warnings.any { it.startsWith("managed config not used") })
     }
 
+    @Test fun brokenManaged_doesNotBlockRemote() {
+        val base = Layers.usable(listOf(file, Source.MANAGED to """{"wake_policy": "x"}"""))
+        assertEquals(listOf(file), base)
+        assertTrue(Layers.checkRemote(base, """{"wake_policy": "never"}""") is RemoteResult.Applied)
+    }
+
     @Test fun managedToJson_keys() {
         assertNull(Layers.managedToJson(emptyMap()))
         // What an admin tool sends for keys it does not set.

@@ -141,9 +141,12 @@ class AgentService : Service() {
         instance = null
         cancelAlarm()
         handler.removeCallbacksAndMessages(null)
-        opamp?.stop()
-        opamp = null
-        AgentState.opampStatus = "off"
+        // On the tick thread, after an updateOpamp() that may still run there.
+        handler.post {
+            opamp?.stop()
+            opamp = null
+            AgentState.opampStatus = "off"
+        }
         try {
             unregisterReceiver(powerReceiver)
             unregisterReceiver(restrictionsReceiver)

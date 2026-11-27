@@ -139,11 +139,18 @@ class OpampAgent(
             val result = when {
                 files.isEmpty() -> RemoteResult.Kept
                 body == null -> RemoteResult.Refused("send one config file (name \"\")")
-                else -> Layers.checkRemote(store.baseLayers(), body)
+                else -> Layers.checkRemote(Layers.usable(store.baseLayers()), body)
             }
             when (result) {
                 is RemoteResult.Applied -> {
-                    store.saveOpamp(body!!, hash)
+                    try {
+                        store.saveOpamp(body!!, hash)
+                    } catch (e: Exception) {
+                        lastSeen = "" // try again with the next offer
+                        client.setRemoteConfigStatus(status(remote.config_hash.toByteArray(), RemoteConfigStatuses.RemoteConfigStatuses_FAILED, "not saved: ${e.message}"))
+                        Log.e(TAG, "OpAMP config not saved, hash $hash", e)
+                        return
+                    }
                     client.setRemoteConfigStatus(status(remote.config_hash.toByteArray(), RemoteConfigStatuses.RemoteConfigStatuses_APPLIED, ""))
                     AgentState.opampStatus = "connected; config $hash applied"
                     Log.i(TAG, "OpAMP config applied, hash $hash")

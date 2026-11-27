@@ -22,17 +22,9 @@ sealed class RemoteResult {
 object Layers {
     /** Merges [base] (local file, managed) and the last good OpAMP document (if any). */
     fun merge(base: List<Pair<Source, String>>, opamp: String?): LoadedConfig {
-        val used = mutableListOf<Pair<Source, String>>()
         val warnings = mutableListOf<String>()
-        var loaded = ConfigLoader.load(emptyList())
-        for (layer in base) {
-            try {
-                loaded = ConfigLoader.load(used + layer)
-                used += layer
-            } catch (e: ConfigException) {
-                warnings += "${layer.first.label} config not used: ${e.message}"
-            }
-        }
+        val used = usable(base, warnings)
+        var loaded = ConfigLoader.load(used)
         // OpAMP turned off (by the local file or managed configurations): its layer is not used.
         if (opamp != null && loaded.config.opamp.on) {
             when (val r = checkRemote(used, opamp)) {
@@ -42,6 +34,20 @@ object Layers {
             }
         }
         return loaded.copy(warnings = warnings + loaded.warnings)
+    }
+
+    /** The [base] layers that work, in order; a layer that does not load is left out. */
+    fun usable(base: List<Pair<Source, String>>, warnings: MutableList<String> = mutableListOf()): List<Pair<Source, String>> {
+        val used = mutableListOf<Pair<Source, String>>()
+        for (layer in base) {
+            try {
+                ConfigLoader.load(used + layer)
+                used += layer
+            } catch (e: ConfigException) {
+                warnings += "${layer.first.label} config not used: ${e.message}"
+            }
+        }
+        return used
     }
 
     /**
