@@ -45,6 +45,11 @@ data class CollectorConfig(val enabled: Boolean, val intervalSeconds: Int)
 
 data class BufferConfig(val maxBytes: Long, val maxAgeSeconds: Long)
 
+/** The OpAMP server. The client runs only when enabled and the endpoint is set. */
+data class OpampConfig(val enabled: Boolean, val endpoint: String) {
+    val on: Boolean get() = enabled && endpoint.isNotEmpty()
+}
+
 data class AgentConfig(
     val exporter: ExporterConfig,
     val deviceId: String,
@@ -53,6 +58,7 @@ data class AgentConfig(
     val buffer: BufferConfig,
     val wakePolicy: WakePolicy,
     val batteryCurrentUnit: CurrentUnit = CurrentUnit.AUTO,
+    val opamp: OpampConfig = OpampConfig(enabled = true, endpoint = ""),
 ) {
     fun collector(name: String): CollectorConfig =
         collectors[name] ?: CollectorConfig(enabled = false, intervalSeconds = DEFAULT_INTERVAL)

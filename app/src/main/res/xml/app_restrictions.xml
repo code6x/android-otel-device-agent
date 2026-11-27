@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Managed configurations: a device admin (MDM / EMM) sets these. Empty means "not set".
+     The order of the config layers, later wins: defaults, local file, these, OpAMP. -->
+<restrictions xmlns:android="http://schemas.android.com/apk/res/android">
+    <restriction
+        android:key="config_json"
+        android:restrictionType="string"
+        android:title="@string/r_config_json"
+        android:description="@string/r_config_json_d" />
+    <restriction
+        android:key="exporter_endpoint"
+        android:restrictionType="string"
+        android:title="@string/r_endpoint"
+        android:description="@string/r_endpoint_d" />
+    <restriction
+        android:key="interval"
+        android:restrictionType="integer"
+        android:title="@string/r_interval"
+        android:description="@string/r_interval_d" />
+    <restriction
+        android:key="wake_policy"
+        android:restrictionType="choice"
+        android:title="@string/r_wake_policy"
+        android:entries="@array/r_wake_policy_names"
+        android:entryValues="@array/r_wake_policy_values" />
+    <restriction
+        android:key="opamp_enabled"
+        android:restrictionType="choice"
+        android:title="@string/r_opamp_enabled"
+        android:entries="@array/r_opamp_enabled_names"
+        android:entryValues="@array/r_opamp_enabled_values" />
+    <restriction
+        android:key="opamp_endpoint"
+        android:restrictionType="string"
+        android:title="@string/r_opamp_endpoint"
+        android:description="@string/r_opamp_endpoint_d" />
+</restrictions>

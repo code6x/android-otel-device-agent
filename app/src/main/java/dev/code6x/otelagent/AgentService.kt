@@ -26,6 +26,7 @@ import dev.code6x.otelagent.collect.Collector
 import dev.code6x.otelagent.collect.Collectors
 import dev.code6x.otelagent.collect.Metrics
 import dev.code6x.otelagent.collect.Reading
+import dev.code6x.otelagent.config.ConfigLoader
 import dev.code6x.otelagent.config.ConfigStore
 import dev.code6x.otelagent.config.LoadedConfig
 import dev.code6x.otelagent.export.FileQueue
@@ -62,6 +63,9 @@ class AgentService : Service() {
     private lateinit var alarmIntent: PendingIntent
     private val plan = TickPlan()
 
+    /** The OpAMP client; null when OpAMP is off. Changed only on the tick thread. */
+    @Volatile private var opamp: OpampAgent? = null
+
     /** Set in onDestroy; a tick still running then must not set an alarm or take a lock. */
     @Volatile private var destroyed = false
 
@@ -71,6 +75,14 @@ class AgentService : Service() {
         override fun onReceive(context: Context, intent: Intent) {
             val charging = intent.action == Intent.ACTION_POWER_CONNECTED
             handler.post { reschedule(charging) }
+        }
+    }
+
+    /** A device admin changed the managed configurations. */
+    private val restrictionsReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            Log.i(TAG, "managed configurations changed")
+            reload()
         }
     }
 
@@ -105,6 +117,7 @@ class AgentService : Service() {
             addAction(Intent.ACTION_POWER_CONNECTED)
             addAction(Intent.ACTION_POWER_DISCONNECTED)
         })
+        registerReceiver(restrictionsReceiver, IntentFilter(Intent.ACTION_APPLICATION_RESTRICTIONS_CHANGED))
         try {
             getSystemService(ConnectivityManager::class.java)?.registerDefaultNetworkCallback(networkCallback)
         } catch (e: RuntimeException) {
@@ -128,8 +141,15 @@ class AgentService : Service() {
         instance = null
         cancelAlarm()
         handler.removeCallbacksAndMessages(null)
+        // On the tick thread, after an updateOpamp() that may still run there.
+        handler.post {
+            opamp?.stop()
+            opamp = null
+            AgentState.opampStatus = "off"
+        }
         try {
             unregisterReceiver(powerReceiver)
+            unregisterReceiver(restrictionsReceiver)
             getSystemService(ConnectivityManager::class.java)?.unregisterNetworkCallback(networkCallback)
         } catch (_: RuntimeException) {
         }
@@ -172,7 +192,38 @@ class AgentService : Service() {
         plan.reset()
         Log.i(TAG, "config: endpoint ${if (cfg.exporter.endpoint.isEmpty()) "not set" else "set"}, " +
             "wake_policy=${cfg.wakePolicy.key}, collectors on: " +
-            cfg.collectors.filter { it.value.enabled }.keys.joinToString())
+            cfg.collectors.filter { it.value.enabled }.keys.joinToString() +
+            ", OpAMP ${if (cfg.opamp.on) "on" else "off"}")
+        updateOpamp()
+    }
+
+    /** Starts, stops or restarts the OpAMP client to match the config. When off: no connection. */
+    private fun updateOpamp() {
+        val want = loaded.config.opamp.let { if (it.on) it.endpoint else null }
+        val current = opamp
+        if (current != null && current.endpoint == want) {
+            current.configChanged()
+            return
+        }
+        current?.stop()
+        opamp = null
+        AgentState.opampStatus = "off"
+        if (destroyed || want == null) return
+        try {
+            opamp = OpampAgent(want, store, instanceUid(), { ConfigLoader.effectiveJson(loaded.entries) }, { reload() })
+                .also { it.start() }
+        } catch (e: Exception) {
+            AgentState.opampStatus = "could not start: ${e.message}"
+            Log.e(TAG, "OpAMP client not started", e)
+        }
+    }
+
+    private fun instanceUid(): ByteArray {
+        val prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
+        val uid = prefs.getString("opamp_uid", null) ?: OpampAgent.newUid().also {
+            prefs.edit().putString("opamp_uid", it).apply()
+        }
+        return with(OpampAgent) { uid.decodeHex() }
     }
 
     private fun intervals(): Map<String, Int> =
@@ -321,6 +372,7 @@ class AgentService : Service() {
             }
             AgentState.queueFiles = metricQueue.files().size
             AgentState.queueBytes = metricQueue.sizeBytes()
+            if (r.sent > 0 || r.error != null) opamp?.updateHealth()
         } catch (e: Exception) {
             Log.e(TAG, "send failed", e)
         }

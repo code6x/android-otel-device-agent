@@ -74,6 +74,11 @@ dependencies {
     implementation("io.opentelemetry:opentelemetry-sdk-logs")
     // The OTLP protobuf marshalers, for the own file queue.
     implementation("io.opentelemetry:opentelemetry-exporter-otlp-common")
+    // OpAMP (remote config). It pulls a newer OpenTelemetry API; the platform above holds it.
+    implementation("io.opentelemetry.contrib:opentelemetry-opamp-client:1.62.1-alpha")
+    // It also pulls OkHttp 5.5.1, which needs compileSdk 37 (not in AGP 8.10). 5.1.0 is what
+    // the spike ran on Android with.
+    implementation("com.squareup.okhttp3:okhttp") { version { strictly("5.1.0") } }
 
     testImplementation("junit:junit:4.13.2")
     // Android's org.json is a stub in unit tests; use the real one there.

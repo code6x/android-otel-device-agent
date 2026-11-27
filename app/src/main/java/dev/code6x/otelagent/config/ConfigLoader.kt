@@ -8,6 +8,8 @@ import org.json.JSONObject
 enum class Source(val label: String) {
     DEFAULT("default"),
     LOCAL_FILE("local file"),
+    MANAGED("managed"),
+    OPAMP("OpAMP"),
 }
 
 /** One value of the merged config, with its source. The path is the list of JSON keys. */
@@ -24,8 +26,8 @@ data class LoadedConfig(
 
 /**
  * Reads config documents (JSON), merges them over the built-in defaults and builds the
- * typed [AgentConfig]. The same document shape is meant for managed configurations and
- * OpAMP later (#3): each source is one more layer.
+ * typed [AgentConfig]. Each source (local file, managed configurations, OpAMP) is one layer
+ * of the same document shape; see [Layers].
  */
 object ConfigLoader {
     val DEFAULTS_JSON = """
@@ -53,7 +55,11 @@ object ConfigLoader {
             "max_bytes": 20971520,
             "max_age": 604800
           },
-          "wake_policy": "when_charging"
+          "wake_policy": "when_charging",
+          "opamp": {
+            "enabled": true,
+            "endpoint": ""
+          }
         }
     """.trimIndent()
 
@@ -96,6 +102,11 @@ object ConfigLoader {
         val warnings = mutableListOf<String>()
         for ((source, json) in layers) {
             for ((p, v) in flatten(json)) {
+                if (source == Source.OPAMP && p[0] == "opamp") {
+                    // The server must not move or turn off its own connection.
+                    warnings += "${p.joinToString(" > ")} (${source.label}): not allowed from OpAMP, not used"
+                    continue
+                }
                 if (!known(p)) {
                     warnings += "${p.joinToString(" > ")} (${source.label}): unknown key, not used"
                     continue
@@ -156,6 +167,10 @@ object ConfigLoader {
             ?: throw ConfigException("wake_policy: must be one of ${WakePolicy.entries.joinToString { it.key }}")
         val unit = CurrentUnit.parse(str("collectors", "battery", "current_unit"))
             ?: throw ConfigException("collectors > battery > current_unit: must be one of ${CurrentUnit.entries.joinToString { it.key }}")
+        val opampEndpoint = str("opamp", "endpoint")
+        if (opampEndpoint.isNotEmpty() && listOf("ws://", "wss://", "http://", "https://").none { opampEndpoint.startsWith(it) }) {
+            throw ConfigException("opamp > endpoint: must start with ws://, wss://, http:// or https://")
+        }
         val collectors = AgentConfig.COLLECTORS.associateWith { c ->
             CollectorConfig(
                 enabled = bool("collectors", c, "enabled"),
@@ -179,13 +194,27 @@ object ConfigLoader {
             ),
             wakePolicy = wake,
             batteryCurrentUnit = unit,
+            opamp = OpampConfig(enabled = bool("opamp", "enabled"), endpoint = opampEndpoint),
         )
+    }
+
+    private fun hidden(entry: ConfigEntry) =
+        entry.path.size == 3 && entry.path[0] == "exporter" && entry.path[1] == "headers"
+
+    /** The config in use as one JSON document (for OpAMP). Header values are hidden. */
+    fun effectiveJson(entries: List<ConfigEntry>): String {
+        val root = JSONObject()
+        for (e in entries) {
+            var o = root
+            for (k in e.path.dropLast(1)) o = o.optJSONObject(k) ?: JSONObject().also { o.put(k, it) }
+            o.put(e.path.last(), if (hidden(e)) "(hidden)" else e.value)
+        }
+        return root.toString()
     }
 
     /** Text for the screen: header values are hidden, as they often hold a token. */
     fun display(entry: ConfigEntry): String {
-        val hidden = entry.path.size == 3 && entry.path[0] == "exporter" && entry.path[1] == "headers"
-        val value = if (hidden) "(hidden)" else if (entry.value is String) "\"${entry.value}\"" else entry.value.toString()
+        val value = if (hidden(entry)) "(hidden)" else if (entry.value is String) "\"${entry.value}\"" else entry.value.toString()
         return "${entry.key} = $value  [${entry.source.label}]"
     }
 }
