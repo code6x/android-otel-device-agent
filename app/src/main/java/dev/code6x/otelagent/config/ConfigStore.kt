@@ -5,6 +5,8 @@ import android.content.RestrictionsManager
 import android.os.Bundle
 import android.util.Base64
 import android.util.Log
+import org.json.JSONException
+import org.json.JSONObject
 import java.io.File
 
 /**
@@ -14,13 +16,20 @@ import java.io.File
  */
 class ConfigStore(private val context: Context) {
     private val file = File(context.filesDir, "config.json")
+    /** The last good OpAMP config: `{"hash": "...", "body": "..."}`, one file so both change together. */
     private val opampFile = File(context.filesDir, "opamp.json")
-    private val opampHashFile = File(context.filesDir, "opamp.hash")
+
+    private fun opampSaved(): JSONObject? = try {
+        if (opampFile.exists()) JSONObject(opampFile.readText()) else null
+    } catch (e: JSONException) {
+        Log.e(TAG, "saved OpAMP config not readable: ${e.message}")
+        null
+    }
 
     /** The config in use. A layer that does not work is left out (with a warning), so the app still runs. */
     fun load(): LoadedConfig {
         val warnings = mutableListOf<String>()
-        val opamp = if (opampFile.exists()) opampFile.readText() else null
+        val opamp = opampSaved()?.optString("body")
         val loaded = Layers.merge(baseLayers(warnings), opamp)
         loaded.warnings.forEach { Log.w(TAG, it) }
         return loaded.copy(warnings = warnings + loaded.warnings)
@@ -59,12 +68,11 @@ class ConfigStore(private val context: Context) {
     }
 
     /** Hash of the last OpAMP config that was applied (hex), or empty. */
-    fun opampHash(): String = if (opampHashFile.exists()) opampHashFile.readText().trim() else ""
+    fun opampHash(): String = opampSaved()?.optString("hash").orEmpty()
 
     /** Keeps an applied OpAMP config and its hash. */
     fun saveOpamp(body: String, hashHex: String) {
-        write(opampFile, body)
-        write(opampHashFile, hashHex)
+        write(opampFile, JSONObject().put("hash", hashHex).put("body", body).toString())
     }
 
     private fun write(target: File, text: String) {

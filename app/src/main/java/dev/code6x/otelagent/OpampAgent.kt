@@ -88,8 +88,14 @@ class OpampAgent(
         Log.i(TAG, "OpAMP client stopped")
     }
 
-    /** The config in use changed: report it. */
-    fun configChanged() = effective.notifyUpdate()
+    /** The last offer was refused; after a change of the other layers it may work. */
+    @Volatile private var lastRefused = false
+
+    /** The config in use changed: report it, and check a refused offer again with the next message. */
+    fun configChanged() {
+        if (lastRefused) lastSeen = ""
+        effective.notifyUpdate()
+    }
 
     /** Reports version, last export and buffer size. */
     fun updateHealth() {
@@ -134,6 +140,7 @@ class OpampAgent(
             // The server offers the same config again on each poll: handle each hash once.
             if (hash == lastSeen) return
             lastSeen = hash
+            lastRefused = false
             val files = remote.config?.config_map.orEmpty()
             val body = files[""]?.body?.utf8() ?: files.values.singleOrNull()?.body?.utf8()
             val result = when {
@@ -157,6 +164,7 @@ class OpampAgent(
                     onApplied()
                 }
                 is RemoteResult.Refused -> {
+                    lastRefused = true
                     client.setRemoteConfigStatus(status(remote.config_hash.toByteArray(), RemoteConfigStatuses.RemoteConfigStatuses_FAILED, result.reason))
                     AgentState.opampStatus = "connected; config $hash refused: ${result.reason}"
                     Log.w(TAG, "OpAMP config refused, hash $hash: ${result.reason}; the last good config stays")
