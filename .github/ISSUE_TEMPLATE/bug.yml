@@ -1,0 +1,43 @@
+name: Bug report
+description: Something does not work as the README says.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Do not post tokens, header values or the address of your receiver.
+  - type: input
+    id: phone
+    attributes:
+      label: Phone model and Android version
+      placeholder: Pixel 7, Android 15
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: App version
+      description: It is on the app screen.
+    validations:
+      required: true
+  - type: input
+    id: receiver
+    attributes:
+      label: Receiver
+      placeholder: OpenTelemetry Collector 0.1xx, VictoriaMetrics, Grafana Alloy, ...
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: config
+    attributes:
+      label: Config (secrets removed)
+      render: json
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: "`adb logcat -s OtelAgent`, if you have it."
+      render: text

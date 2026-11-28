@@ -40,6 +40,8 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
+            // No git info in the APK: a build from a source archive (no .git) must give the same APK.
+            vcsInfo.include = false
             if (keystoreFile != null) signingConfig = signingConfigs.getByName("release")
         }
     }
@@ -51,6 +53,13 @@ android {
     }
 
     buildFeatures { buildConfig = true }
+
+    // No signed dependency list in the APK: F-Droid and IzzyOnDroid ask for this (it is
+    // encrypted with a Google key, so no one else can read or rebuild it).
+    dependenciesInfo {
+        includeInApk = false
+        includeInBundle = false
+    }
 
     packaging {
         resources.excludes += setOf("META-INF/versions/9/OSGI-INF/MANIFEST.MF")

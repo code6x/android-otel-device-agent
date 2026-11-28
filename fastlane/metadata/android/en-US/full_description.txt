@@ -1,0 +1,16 @@
+An agent that reads the health of the device and sends it over OTLP/HTTP (OpenTelemetry) to any OTLP receiver: the OpenTelemetry Collector, VictoriaMetrics, Grafana Alloy or Grafana Cloud, and others.
+
+What it reads:
+* Battery: level, voltage, temperature, current, charge counter, cycle count, status, power source, health
+* Power: screen on, battery saver, idle (Doze) mode
+* Boot: uptime, boot count, boot time
+* Network: active network and its type, Wi-Fi signal and link speed
+* Memory and storage
+* Thermal status and headroom
+* Optional, with Shizuku: running apps, boot reason, battery history, temperature of each sensor
+
+Features:
+* One foreground service; each collector has its own interval (default 60 s)
+* A disk queue keeps the data while the network is down, and sends it later, in order
+* Config by a JSON file, a QR code, adb, managed configurations (MDM) or OpAMP
+* No ads, no tracking, no Google services. The data goes only to the receiver you set.

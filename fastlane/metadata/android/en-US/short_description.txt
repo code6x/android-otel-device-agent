@@ -1,0 +1,1 @@
+Sends device health (battery, power, network, storage, thermal) over OTLP.

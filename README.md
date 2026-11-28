@@ -28,6 +28,158 @@ and install it. Android 8.0 (API 26) or newer. Then:
 The service starts again by itself after a reboot and after an app update,
 if it was running before.
 
+## Quick start
+
+The app sends OTLP/HTTP protobuf, so any OTLP receiver works. Three examples
+follow. In every example:
+
+- Replace `HOST` with the address of your receiver. **The phone must be able
+  to reach it.** Plain `http://` has no encryption: use it only on a local
+  network you trust. For anything else use `https://`.
+- Import the app config as described in [Import the config](#import-the-config).
+- Use a short `interval` (for example `15`) while you test, then use a
+  longer one.
+
+### OpenTelemetry Collector
+
+Tested with `otel/opentelemetry-collector-contrib:0.165.0`.
+
+`otelcol.yaml`:
+
+```yaml
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+
+exporters:
+  debug:
+    verbosity: detailed
+  # Put your real exporter here (for example otlphttp or
+  # prometheusremotewrite), and add it to the two lists below.
+
+service:
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      exporters: [debug]
+    logs:
+      receivers: [otlp]
+      exporters: [debug]
+```
+
+```bash
+docker run -d -p 4318:4318 \
+  -v "$PWD/otelcol.yaml:/etc/otelcol-contrib/config.yaml:ro" \
+  otel/opentelemetry-collector-contrib:0.165.0
+```
+
+App config:
+
+```json
+{
+  "exporter": {
+    "endpoint": "http://HOST:4318/v1/metrics",
+    "logs_endpoint": "http://HOST:4318/v1/logs"
+  }
+}
+```
+
+Look in `docker logs`: you see the metric `hw.battery.charge` and, once per
+phone boot (the first time the app runs after a boot), a log record `device.boot`.
+
+### VictoriaMetrics
+
+Tested with `victoriametrics/victoria-metrics:v1.156.0` (single node).
+
+```bash
+docker run -d -p 8428:8428 victoriametrics/victoria-metrics:v1.156.0
+```
+
+App config:
+
+```json
+{
+  "exporter": { "endpoint": "http://HOST:8428/opentelemetry/v1/metrics" }
+}
+```
+
+VictoriaMetrics does not take OTLP logs, so there is no `logs_endpoint`.
+The boot log record is not sent.
+
+Metric names have dots, so put the name in a label match:
+
+```bash
+curl -G 'http://HOST:8428/api/v1/query' \
+  --data-urlencode 'query={__name__="hw.battery.charge"}'
+```
+
+You can also open `http://HOST:8428/vmui` in a browser and type the same query.
+
+### Grafana
+
+**With Grafana Alloy.** Tested with `grafana/alloy:v1.22.0`. This is a
+real-use config: Alloy gets the data from the phone and sends it on to
+Grafana Cloud. Set `OTLP_USERNAME` (your Grafana Cloud instance ID) and
+`OTLP_API_KEY` (an access policy token with the `metrics:write` and
+`logs:write` scopes) in Alloy's environment.
+
+```alloy
+otelcol.receiver.otlp "default" {
+  http {
+    endpoint = "0.0.0.0:4318"
+  }
+  output {
+    metrics = [otelcol.exporter.otlphttp.cloud.input]
+    logs    = [otelcol.exporter.otlphttp.cloud.input]
+  }
+}
+
+otelcol.exporter.otlphttp "cloud" {
+  client {
+    endpoint = "https://otlp-gateway-prod-REGION.grafana.net/otlp"
+    auth     = otelcol.auth.basic.cloud.handler
+  }
+}
+
+otelcol.auth.basic "cloud" {
+  client_auth {
+    username = sys.env("OTLP_USERNAME")
+    password = sys.env("OTLP_API_KEY")
+  }
+}
+```
+
+For your own Prometheus, replace the exporter with
+`otelcol.exporter.prometheus` and `prometheus.remote_write`
+([Alloy docs](https://grafana.com/docs/alloy/latest/)). Prometheus takes no
+logs: remove the `logs` line, or send logs to a Loki exporter. The app config is
+the same as for the Collector (`http://HOST:4318/v1/metrics` and
+`/v1/logs`).
+
+Only the receiver part was tested: with `otelcol.exporter.debug` in place of
+the cloud exporter, Alloy logged the metrics from the app (see
+[docs/receiver-tests.md](docs/receiver-tests.md)). The Grafana Cloud part
+follows the Grafana docs and was not run.
+
+**Grafana Cloud direct** (no Alloy). The app can send straight to the
+Grafana Cloud OTLP gateway. In the Grafana Cloud portal, open your stack and
+**Configure** on the **OpenTelemetry** tile: it shows the OTLP endpoint URL (use it in place of the URLs below), the
+instance ID, and it makes a token. The header value is `Basic ` and then
+the base64 of `instanceID:token` (`echo -n 'ID:TOKEN' | base64 -w0`). This
+is not tested.
+
+```json
+{
+  "exporter": {
+    "endpoint": "https://otlp-gateway-prod-REGION.grafana.net/otlp/v1/metrics",
+    "logs_endpoint": "https://otlp-gateway-prod-REGION.grafana.net/otlp/v1/logs",
+    "headers": { "Authorization": "Basic REPLACE_ME" }
+  }
+}
+```
+
 ## What it collects
 
 Each collector can be turned on or off, and has its own interval (default 60 s).
@@ -38,58 +190,34 @@ Names follow the OpenTelemetry semantic conventions where they exist
 (`hw.battery.*`, `system.memory.*`, `system.filesystem.*`, `system.uptime`),
 else `device.*`.
 
-| Collector | Name | Unit | Attributes | What |
-|---|---|---|---|---|
-| battery | `hw.battery.charge` | `1` | | Battery level, 0 to 1 (0.87 = 87 %) |
-| battery | `device.battery.voltage` | `V` | | Battery voltage |
-| battery | `device.battery.temperature` | `Cel` | | Battery temperature, °C |
-| battery | `device.battery.current` | `A` | | Battery current. The sign is kept as the phone gives it: positive is into the battery on most phones, but some phones (for example OnePlus) use the other sign. The unit of the raw value is chosen by `collectors.battery.current_unit`: see [Battery current unit](#battery-current-unit) |
-| battery | `device.battery.charge_counter` | `A.h` | | Remaining charge |
-| battery | `device.battery.cycle_count` | `{cycle}` | | Charge cycles (Android 14+, when the phone reports it) |
-| battery | `device.battery.status` | `1` | `battery.status`: `charging`, `discharging`, `not_charging`, `full`, `unknown` | 1 for the current status, 0 for the others |
-| battery | `device.battery.plug` | `1` | `battery.plug`: `ac`, `usb`, `wireless`, `dock`, `none` | 1 for the current power source, 0 for the others |
-| battery | `device.battery.health` | `1` | `battery.health`: `good`, `overheat`, `dead`, `over_voltage`, `failure`, `cold`, `unknown` | 1 for the current health, 0 for the others |
-| power | `device.screen.on` | `1` | | 1 when the screen is on |
-| power | `device.power.save_mode` | `1` | | 1 when battery saver is on |
-| power | `device.power.idle` | `1` | | 1 in idle (Doze) mode |
-| boot | `system.uptime` | `s` | | Time since boot, deep sleep included |
-| boot | `device.boot.count` | `{boot}` | | Boots since the phone was set up (`Settings.Global.BOOT_COUNT`) |
-| boot | `device.boot.time` | `s` | | Time of the last boot, Unix seconds |
-| boot | log record `device.boot` | | `device.boot.count`, `device.boot.time` | One OTLP log record per boot, at the boot time (needs `exporter.logs_endpoint`) |
-| network | `device.network.connected` | `1` | | 1 when there is an active network |
-| network | `device.network.type` | `1` | `network.connection.type`: `wifi`, `cell`, `wired`, `vpn`, `bluetooth` | 1 for each transport of the active network (a VPN over Wi-Fi is both `vpn` and `wifi`) |
-| network | `device.wifi.connected` | `1` | | 1 when Wi-Fi is connected |
-| network | `device.wifi.rssi` | `dBm` | | Wi-Fi signal strength |
-| network | `device.wifi.link_speed` | `Mbit/s` | | Wi-Fi link speed |
-| device | `system.memory.limit` | `By` | | Total RAM |
-| device | `system.memory.usage` | `By` | `system.memory.state`: `free` (available to apps), `used` | RAM |
-| device | `device.memory.low` | `1` | | 1 when the system is low on memory |
-| device | `system.filesystem.limit` | `By` | `system.filesystem.mountpoint`: `/data` | Size of `/data` |
-| device | `system.filesystem.usage` | `By` | `system.filesystem.mountpoint`: `/data`; `system.filesystem.state`: `free`, `used` | Space on `/data` |
-| thermal | `device.thermal.status` | `1` | | 0 none, 1 light, 2 moderate, 3 severe, 4 critical, 5 emergency, 6 shutdown (Android 10+) |
-| thermal | `device.thermal.headroom` | `1` | | Thermal headroom; 1.0 is where severe throttling starts (Android 11+, when the phone reports it) |
-| apps ¹ | `device.app.running` | `1` | `app.package` | 1 when the package has a running process (its main process or a `package:name` one), from `ps` |
-| boot_reason ¹ | `device.boot.reason` | `1` | `device.boot.reason`, `device.shutdown.reason` | Always 1; the reason of this boot (`sys.boot.reason`) and of the last shutdown (`sys.boot.reason.last`) |
-| thermal_sensors ¹ | `device.thermal.temperature` | `Cel` | `device.thermal.sensor`, `device.thermal.type` | Each sensor of `dumpsys thermalservice` ("Current temperatures from HAL") |
-| (Shizuku on) | `device.agent.shizuku` | `1` | `shizuku.state`: `ready`, `not_running`, `no_permission`, `too_old` | 1 for the current Shizuku state; sent when a Shizuku collector is on |
-| (always) | `device.agent.start_time` | `s` | | Start time of the app process, Unix seconds. A new value means a new process |
-| (always) | `device.agent.queue.size` | `By` | | Bytes waiting in the disk queue |
-| (always) | `device.agent.queue.dropped` | `{file}` | | Queue files dropped by the size cap or max age since the process started |
-| (always) | `device.agent.wake` | `1` | | 1 when the timer wakes the CPU for readings (see `wake_policy`) |
+The full list of every metric and log record (name, unit, attributes, the
+Android API it is read from, minimum Android version) is in the
+**[metrics reference](docs/metrics.md)**. The collectors:
 
-The `device.agent.*` metrics are sent with every reading.
+- `battery` (on): level, voltage, temperature, current, charge counter, cycle count, status, power source, health
+- `power` (on): screen on, battery saver, idle (Doze) mode
+- `boot` (on): uptime, boot count, boot time; one log record per boot (needs `exporter.logs_endpoint`)
+- `network` (on): active network and its transports, Wi-Fi connected, signal strength, link speed
+- `device` (on): RAM and the space on `/data`
+- `thermal` (on): thermal status and headroom
+- `apps` ¹ (off): is each configured package running
+- `boot_reason` ¹ (off): boot and last shutdown reason; one log record per boot
+- `batterystats` ¹ (off): no metric; one log record after a boot or a gap, with the battery history
+- `thermal_sensors` ¹ (off): temperature of each sensor
+
+The app also sends its own `device.agent.*` metrics (start time, queue size,
+dropped queue files, wake, Shizuku state) with every reading.
 
 ¹ A Shizuku collector: off by default, see [Shizuku collectors](#shizuku-collectors-optional).
-`batterystats` (also Shizuku) sends no metric, only log records.
 
 The app does **not** collect the Wi-Fi name (SSID) or BSSID: Android needs the
 location permission for them.
 
-**Resource attributes** (on every metric and log record): `service.name`
-(`android-otel-device-agent`), `service.version`, `device.id` (from the
-config; left out when empty), `device.model.identifier`, `device.manufacturer`,
-`os.name`, `os.type`, `os.version`, `telemetry.sdk.*`, and the free-form
-attributes from `resource.attributes` in the config. There is **no**
+**Resource attributes** (on every metric and log record) include
+`service.name`, `service.version`, `device.id` (from the config; left out when
+empty), the device model and maker, the OS, and the free-form attributes from
+`resource.attributes` in the config. The full list is in the
+[metrics reference](docs/metrics.md#resource-attributes). There is **no**
 `app.installation.id` (a random id per install: it is private, and it makes a
 new series after each reinstall).
 
@@ -98,7 +226,7 @@ new series after each reinstall).
 VictoriaMetrics takes OTLP at `/opentelemetry/v1/metrics`. It keeps the names
 as they are, with dots, so a query must quote them:
 `{__name__="hw.battery.charge", device.id="phone-1"}`. It drops the units, so
-use the table above. Every resource attribute becomes a label.
+use the [metrics reference](docs/metrics.md). Every resource attribute becomes a label.
 
 ## Config
 
