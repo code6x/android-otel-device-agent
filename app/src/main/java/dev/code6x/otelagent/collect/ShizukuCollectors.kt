@@ -71,11 +71,17 @@ class BatteryStatsCollector(private val context: Context, private val intervalSe
         val boot = BootCollector.read(context)
         val lastSeen = p.getLong("bs_last_seen", 0)
         val gapMs = maxOf(3L * intervalSeconds() * 1000, 5 * 60_000L)
-        val newBoot = lastSeen > 0 && kotlin.math.abs(boot.bootTimeS - p.getLong("bs_boot_time", 0)) > 120
+        val lastCount = if (p.contains("bs_boot_count")) p.getInt("bs_boot_count", 0) else null
+        val lastBoot = if (p.contains("bs_boot_time")) p.getLong("bs_boot_time", 0) else null
+        val newBoot = BootCollector.isNewBoot(lastCount, lastBoot, boot)
         val gap = lastSeen > 0 && (newBoot || nowMs - lastSeen > gapMs)
         p.edit().apply {
-            if (gap && !p.contains("bs_gap_from")) putLong("bs_gap_from", lastSeen)
+            if (gap && !p.contains("bs_gap_from")) {
+                putLong("bs_gap_from", lastSeen)
+                putInt("bs_failures", 0)
+            }
             putLong("bs_last_seen", nowMs)
+            if (boot.bootCount != null) putInt("bs_boot_count", boot.bootCount) else remove("bs_boot_count")
             putLong("bs_boot_time", boot.bootTimeS)
         }.apply()
         val from = p.getLong("bs_gap_from", 0)
@@ -84,8 +90,18 @@ class BatteryStatsCollector(private val context: Context, private val intervalSe
             ShizukuShell.state().let { if (it != ShizukuShell.State.READY) throw ShizukuShell.NotAvailable(it) }
             return emptyList()
         }
-        val summary = ShizukuShell.read("dumpsys", "batterystats", "--history", timeoutMs = 30_000) {
-            ShellParsers.summarize(ShellParsers.batteryHistory(it, TimeZone.getDefault()), from, nowMs)
+        // dumpsys stops a service after 10 s by default and cuts its output; the history can be long.
+        val summary = try {
+            ShizukuShell.read("dumpsys", "-t", "25", "batterystats", "--history", timeoutMs = 30_000) {
+                ShellParsers.summarize(ShellParsers.batteryHistory(it, TimeZone.getDefault()), from, nowMs)
+            }
+        } catch (e: ShizukuShell.NotAvailable) {
+            throw e
+        } catch (e: java.io.IOException) {
+            // Do not run a slow, failing dump on every tick: give up on this gap after 3 tries.
+            val n = p.getInt("bs_failures", 0) + 1
+            if (n >= MAX_FAILURES) p.edit().remove("bs_gap_from").apply() else p.edit().putInt("bs_failures", n).apply()
+            throw e
         }
         logs = listOf(record(summary, from, nowMs))
         p.edit().remove("bs_gap_from").apply()
@@ -95,6 +111,8 @@ class BatteryStatsCollector(private val context: Context, private val intervalSe
     override fun takeLogs(): List<LogEntry> = logs.also { logs = emptyList() }
 
     companion object {
+        private const val MAX_FAILURES = 3
+
         private fun iso(ms: Long) =
             SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.ROOT).apply { timeZone = TimeZone.getTimeZone("UTC") }.format(Date(ms))
 

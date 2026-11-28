@@ -67,7 +67,12 @@ class ShellParsersTest {
         assertEquals(80, s.levelMin)
         assertEquals(100, s.levelMax)
         assertEquals(listOf(start + 2019 to "ac"), s.plugChanges)
-        assertNull(ShellParsers.summarize(steps, start + 60_000, start + 70_000))
+        // A quiet time after the last step: the level stays, no changes.
+        val quiet = ShellParsers.summarize(steps, start + 60_000, start + 70_000)!!
+        assertEquals(100, quiet.levelStart)
+        assertEquals(100, quiet.levelEnd)
+        assertTrue(quiet.plugChanges.isEmpty())
+        assertNull(ShellParsers.summarize(steps, start - 70_000, start - 60_000))
         // The level before the time is the start level, and counts for min.
         val drop = listOf(
             ShellParsers.BatteryStep(0, 70, false, "none"),

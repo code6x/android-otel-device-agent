@@ -332,6 +332,7 @@ gets them through [Shizuku](https://github.com/RikkaApps/Shizuku). They are
 | `thermal_sensors` | temperature of each sensor | `dumpsys thermalservice` |
 
 Log records go to `exporter.logs_endpoint`; when it is empty, they are not sent.
+When the `batterystats` dump fails 3 times for one gap (time-out or error), that gap is dropped.
 The `batterystats` history is limited: the phone resets it, for example after a
 full charge. Then the record says there is no history for that time.
 

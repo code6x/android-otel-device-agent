@@ -85,7 +85,7 @@ object ShellParsers {
         for (line in lines) {
             val m = HISTORY_LINE.find(line) ?: continue
             val t = m.groupValues[1]
-            if (t != "0") offset = durationMs(t)
+            offset = if (t == "0") 0 else durationMs(t)
             val rest = m.groupValues[3]
             TIME_EVENT.find(rest)?.let { e -> fmt.parse(e.groupValues[1])?.let { anchor = offset to it.time } }
             for (word in rest.trim().split(Regex("\\s+"))) {
@@ -112,7 +112,7 @@ object ShellParsers {
         val plugChanges: List<Pair<Long, String>>,
     )
 
-    /** What happened in [fromMs, toMs]. Null when the history has no step in that time. */
+    /** What happened in [fromMs, toMs]. Null when the history has no step in or before that time. */
     fun summarize(steps: List<BatteryStep>, fromMs: Long, toMs: Long): BatterySummary? = summarize(steps.asSequence(), fromMs, toMs)
 
     /** As above, in one pass; only the steps in the time are kept. */
@@ -122,7 +122,11 @@ object ShellParsers {
         for (s in steps) {
             if (s.timeMs < fromMs) before = s else if (s.timeMs <= toMs) inside += s
         }
-        if (inside.isEmpty()) return null
+        if (inside.isEmpty()) {
+            // A quiet time: nothing changed after the step before it.
+            val b = before ?: return null
+            return BatterySummary(fromMs, toMs, b.level, b.level, b.level, b.level, emptyList())
+        }
         val changes = mutableListOf<Pair<Long, String>>()
         var last = before?.plug
         for (s in inside) {

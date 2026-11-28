@@ -115,6 +115,8 @@ class ConfigLoaderTest {
         assertTrue(c.collector("apps").enabled)
         assertRejected("""{"collectors": {"apps": {"packages": "com.example.a; rm -rf /"}}}""", "not a package name")
         assertRejected("""{"collectors": {"apps": {"packages": "nodot"}}}""", "not a package name")
+        assertTrue(local("""{"collectors": {"apps": {"enabled": true}}}""").warnings.any { it.contains("packages is empty") })
+        assertTrue(local("""{"collectors": {"apps": {"enabled": false}}}""").warnings.isEmpty())
     }
 
     @Test fun badValuesAreRejected() {

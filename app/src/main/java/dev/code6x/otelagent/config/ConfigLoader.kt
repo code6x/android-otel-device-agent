@@ -121,6 +121,9 @@ object ConfigLoader {
             }
         }
         val config = build(merged.mapValues { it.value.value })
+        if (config.collector("apps").enabled && config.appPackages.isEmpty()) {
+            warnings += "collectors > apps: on, but collectors > apps > packages is empty, so it sends nothing"
+        }
         return LoadedConfig(config, merged.values.toList(), warnings)
     }
 
