@@ -68,6 +68,15 @@ class ShellParsersTest {
         assertEquals(100, s.levelMax)
         assertEquals(listOf(start + 2019 to "ac"), s.plugChanges)
         assertNull(ShellParsers.summarize(steps, start + 60_000, start + 70_000))
+        // The level before the time is the start level, and counts for min.
+        val drop = listOf(
+            ShellParsers.BatteryStep(0, 70, false, "none"),
+            ShellParsers.BatteryStep(10, 100, true, "ac"),
+        )
+        val d = ShellParsers.summarize(drop, 5, 20)!!
+        assertEquals(70, d.levelStart)
+        assertEquals(70, d.levelMin)
+        assertEquals(listOf(10L to "ac"), d.plugChanges)
     }
 
     @Test fun historyStepsBeforeTimeAreSkipped() {

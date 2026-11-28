@@ -122,7 +122,8 @@ object ShellParsers {
             if (last != null && s.plug != last) changes += s.timeMs to s.plug
             last = s.plug
         }
-        val levels = inside.map { it.level }
+        // The level at the start (the step before the time) counts for min and max too.
+        val levels = (listOfNotNull(before) + inside).map { it.level }
         return BatterySummary(fromMs, toMs, (before ?: inside.first()).level, inside.last().level, levels.min(), levels.max(), changes)
     }
 }
