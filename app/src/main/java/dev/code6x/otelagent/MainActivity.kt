@@ -17,9 +17,12 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import dev.code6x.otelagent.collect.ShizukuShell
+import dev.code6x.otelagent.config.AgentConfig
 import dev.code6x.otelagent.config.ConfigException
 import dev.code6x.otelagent.config.ConfigLoader
 import dev.code6x.otelagent.config.ConfigStore
+import rikka.shizuku.Shizuku
 import java.util.Date
 
 /**
@@ -105,6 +108,7 @@ class MainActivity : Activity() {
         sb.append("Timer: ").append(AgentState.timerMode.ifEmpty { "-" }).append('\n')
         sb.append("Endpoint: ").append(if (loaded.config.exporter.endpoint.isEmpty()) "not set (data stays in the queue)" else loaded.config.exporter.endpoint).append('\n')
         sb.append("OpAMP: ").append(if (!loaded.config.opamp.on) "off" else if (running) AgentState.opampStatus else "on, not running").append('\n')
+        sb.append("Shizuku: ").append(if (running) AgentState.shizuku else "-").append('\n')
         sb.append("Last export: ").append(time(AgentState.lastExportMs))
         if (AgentState.lastExportResult.isNotEmpty()) sb.append(" (").append(AgentState.lastExportResult).append(')')
         sb.append('\n')
@@ -112,7 +116,7 @@ class MainActivity : Activity() {
         val bytes = AgentService.queueBytes()
         sb.append("Queue: ").append(if (files == null) "-" else "$files files, ${bytes!! / 1024} KiB").append('\n')
         sb.append("Last reading: ").append(time(AgentState.lastReadingMs)).append("\n\n")
-        for (name in dev.code6x.otelagent.config.AgentConfig.COLLECTORS) {
+        for (name in AgentConfig.COLLECTORS) {
             val on = loaded.config.collector(name)
             sb.append(name).append(if (on.enabled) " (every ${on.intervalSeconds} s)" else " (off)")
             val st = AgentState.collectors[name]
@@ -148,6 +152,26 @@ class MainActivity : Activity() {
                             startActivity(open)
                         } catch (e: ActivityNotFoundException) {
                             Toast.makeText(this@MainActivity, "This phone has no such screen", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                })
+            }
+        }
+        if (AgentConfig.SHIZUKU_COLLECTORS.any { loaded.config.collector(it).enabled }) {
+            val st = ShizukuShell.state()
+            val ok = st == ShizukuShell.State.READY
+            setupBox.addView(TextView(this).apply {
+                text = (if (ok) "[ok] " else "[ ! ] ") + "Shizuku: " + st.text +
+                    "\nNeeded by the Shizuku collectors. On a phone without root, start Shizuku again after each boot."
+            })
+            if (st == ShizukuShell.State.NO_PERMISSION) {
+                setupBox.addView(Button(this).apply {
+                    text = "Ask for Shizuku permission"
+                    setOnClickListener {
+                        try {
+                            Shizuku.requestPermission(ShizukuShell.PERMISSION_REQUEST)
+                        } catch (e: RuntimeException) {
+                            Toast.makeText(this@MainActivity, "Shizuku: ${e.message}", Toast.LENGTH_LONG).show()
                         }
                     }
                 })

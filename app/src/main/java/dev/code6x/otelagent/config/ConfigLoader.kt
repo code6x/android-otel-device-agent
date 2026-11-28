@@ -49,7 +49,11 @@ object ConfigLoader {
             "boot": {"enabled": true, "interval": 60},
             "network": {"enabled": true, "interval": 60},
             "device": {"enabled": true, "interval": 60},
-            "thermal": {"enabled": true, "interval": 60}
+            "thermal": {"enabled": true, "interval": 60},
+            "apps": {"enabled": false, "interval": 60, "packages": ""},
+            "boot_reason": {"enabled": false, "interval": 60},
+            "batterystats": {"enabled": false, "interval": 60},
+            "thermal_sensors": {"enabled": false, "interval": 60}
           },
           "buffer": {
             "max_bytes": 20971520,
@@ -70,6 +74,8 @@ object ConfigLoader {
 
     const val MIN_INTERVAL = 10
     const val MAX_INTERVAL = 86400
+
+    private val PACKAGE_NAME = Regex("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)+")
 
     /** Turns one JSON document into leaf values by path. Throws [ConfigException]. */
     fun flatten(json: String): Map<List<String>, Any> {
@@ -115,6 +121,9 @@ object ConfigLoader {
             }
         }
         val config = build(merged.mapValues { it.value.value })
+        if (config.collector("apps").enabled && config.appPackages.isEmpty()) {
+            warnings += "collectors > apps: on, but collectors > apps > packages is empty, so it sends nothing"
+        }
         return LoadedConfig(config, merged.values.toList(), warnings)
     }
 
@@ -167,6 +176,10 @@ object ConfigLoader {
             ?: throw ConfigException("wake_policy: must be one of ${WakePolicy.entries.joinToString { it.key }}")
         val unit = CurrentUnit.parse(str("collectors", "battery", "current_unit"))
             ?: throw ConfigException("collectors > battery > current_unit: must be one of ${CurrentUnit.entries.joinToString { it.key }}")
+        val appPackages = str("collectors", "apps", "packages").split(',').map { it.trim() }.filter { it.isNotEmpty() }
+        appPackages.firstOrNull { !PACKAGE_NAME.matches(it) }?.let {
+            throw ConfigException("collectors > apps > packages: \"$it\" is not a package name")
+        }
         val opampEndpoint = str("opamp", "endpoint")
         if (opampEndpoint.isNotEmpty() && listOf("ws://", "wss://", "http://", "https://").none { opampEndpoint.startsWith(it) }) {
             throw ConfigException("opamp > endpoint: must start with ws://, wss://, http:// or https://")
@@ -194,6 +207,7 @@ object ConfigLoader {
             ),
             wakePolicy = wake,
             batteryCurrentUnit = unit,
+            appPackages = appPackages,
             opamp = OpampConfig(enabled = bool("opamp", "enabled"), endpoint = opampEndpoint),
         )
     }

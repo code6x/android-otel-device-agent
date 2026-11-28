@@ -68,12 +68,19 @@ else `device.*`.
 | device | `system.filesystem.usage` | `By` | `system.filesystem.mountpoint`: `/data`; `system.filesystem.state`: `free`, `used` | Space on `/data` |
 | thermal | `device.thermal.status` | `1` | | 0 none, 1 light, 2 moderate, 3 severe, 4 critical, 5 emergency, 6 shutdown (Android 10+) |
 | thermal | `device.thermal.headroom` | `1` | | Thermal headroom; 1.0 is where severe throttling starts (Android 11+, when the phone reports it) |
+| apps ¹ | `device.app.running` | `1` | `app.package` | 1 when the package has a running process (its main process or a `package:name` one), from `ps` |
+| boot_reason ¹ | `device.boot.reason` | `1` | `device.boot.reason`, `device.shutdown.reason` | Always 1; the reason of this boot (`sys.boot.reason`) and of the last shutdown (`sys.boot.reason.last`) |
+| thermal_sensors ¹ | `device.thermal.temperature` | `Cel` | `device.thermal.sensor`, `device.thermal.type` | Each sensor of `dumpsys thermalservice` ("Current temperatures from HAL") |
+| (Shizuku on) | `device.agent.shizuku` | `1` | `shizuku.state`: `ready`, `not_running`, `no_permission`, `too_old` | 1 for the current Shizuku state; sent when a Shizuku collector is on |
 | (always) | `device.agent.start_time` | `s` | | Start time of the app process, Unix seconds. A new value means a new process |
 | (always) | `device.agent.queue.size` | `By` | | Bytes waiting in the disk queue |
 | (always) | `device.agent.queue.dropped` | `{file}` | | Queue files dropped by the size cap or max age since the process started |
 | (always) | `device.agent.wake` | `1` | | 1 when the timer wakes the CPU for readings (see `wake_policy`) |
 
 The `device.agent.*` metrics are sent with every reading.
+
+¹ A Shizuku collector: off by default, see [Shizuku collectors](#shizuku-collectors-optional).
+`batterystats` (also Shizuku) sends no metric, only log records.
 
 The app does **not** collect the Wi-Fi name (SSID) or BSSID: Android needs the
 location permission for them.
@@ -117,7 +124,11 @@ default. Example (all keys):
     "boot":    { "enabled": true, "interval": 300 },
     "network": { "enabled": true, "interval": 60 },
     "device":  { "enabled": true, "interval": 300 },
-    "thermal": { "enabled": false }
+    "thermal": { "enabled": false },
+    "apps":            { "enabled": false, "interval": 60, "packages": "com.example.a, com.example.b" },
+    "boot_reason":     { "enabled": false, "interval": 60 },
+    "batterystats":    { "enabled": false, "interval": 60 },
+    "thermal_sensors": { "enabled": false, "interval": 60 }
   },
   "buffer": {
     "max_bytes": 20971520,
@@ -138,6 +149,8 @@ default. Example (all keys):
 | `resource.device.id` | empty | The `device.id` resource attribute |
 | `resource.attributes` | none | More resource attributes (text values) |
 | `collectors.NAME.enabled` | `true` | NAME is `battery`, `power`, `boot`, `network`, `device` or `thermal` |
+| `collectors.NAME.enabled` | `false` | The Shizuku collectors: NAME is `apps`, `boot_reason`, `batterystats` or `thermal_sensors` |
+| `collectors.apps.packages` | empty | Package names for the `apps` collector, with commas: `"com.example.a, com.example.b"` |
 | `collectors.NAME.interval` | `60` | Seconds, 10–86400 |
 | `collectors.battery.current_unit` | `auto` | Unit of the raw battery current: `auto`, `uA` or `mA`; see [Battery current unit](#battery-current-unit) |
 | `buffer.max_bytes` | `20971520` (20 MiB) | Disk queue size cap. When it is full, the oldest file is dropped first |
@@ -304,6 +317,50 @@ docker run --rm -p 127.0.0.1:4320:4320 -p 127.0.0.1:4321:4321 opamp-example -no-
    `RemoteConfigStatus=APPLIED, RemoteConfigStatusHash=...`.
 4. Save `{"wake_policy": "sometimes"}`: logcat `OpAMP config refused`, the
    server log `RemoteConfigStatus=FAILED`, and the last config stays.
+
+## Shizuku collectors (optional)
+
+Four collectors need the rights of the shell user (as `adb shell`). The app
+gets them through [Shizuku](https://github.com/RikkaApps/Shizuku). They are
+**off by default**. Without Shizuku the app works as before.
+
+| collector | what | command |
+|---|---|---|
+| `apps` | is each package in `collectors.apps.packages` running | `ps -A -o NAME` |
+| `boot_reason` | boot and last shutdown reason: a metric, and one log record per boot (`device.boot.reason`) | `getprop sys.boot.reason`, `getprop sys.boot.reason.last` |
+| `batterystats` | after a boot, or a gap with no reading (more than 3 intervals, and at least 5 min): one log record (`device.battery.history`) with the battery level at the start and end, min and max, and each change of the power source in that time | `dumpsys batterystats --history` |
+| `thermal_sensors` | temperature of each sensor | `dumpsys thermalservice` |
+
+Log records go to `exporter.logs_endpoint`; when it is empty, they are not sent.
+When the `batterystats` dump fails 3 times for one gap (time-out or error), that gap is dropped.
+The `batterystats` history is limited: the phone resets it, for example after a
+full charge. Then the record says there is no history for that time.
+
+**Setup:**
+
+1. Install Shizuku (Google Play, or the APK from its GitHub releases) and
+   start it, as its app explains: with **root**, with **wireless debugging**
+   (Android 11+, no computer needed), or with **adb** from a computer.
+2. Turn on the collectors you want in the config, for example
+   `"collectors": {"apps": {"enabled": true, "packages": "com.example.a"}, "thermal_sensors": {"enabled": true}}`.
+3. Open this app. The setup list shows a **Shizuku** line; press **Ask for
+   Shizuku permission** and allow it.
+
+**After each boot**, on a phone without root, Shizuku is stopped until it is
+started again (with wireless debugging or adb). Shizuku 13.6.0 and newer can
+start itself at boot without root on Android 13+, when the phone is on a
+trusted Wi-Fi network (a setting in the Shizuku app). With root, Shizuku can
+start at boot.
+
+Until Shizuku runs, the app keeps running: the other collectors send as
+usual, the Shizuku collectors show **not available** with the reason on the
+app screen, and `device.agent.shizuku` says which state it is (`not_running`,
+`no_permission`, `too_old`). A boot or gap seen meanwhile is kept, and its
+`batterystats` record is sent once Shizuku runs. Shizuku sends its connection
+to the app when it starts, so the app does not need a restart.
+
+The shell user cannot read `/sys/class/power_supply` on some phones (HyperOS 2:
+"Permission denied"), so no collector uses it.
 
 ## `wake_policy`: waking the CPU
 

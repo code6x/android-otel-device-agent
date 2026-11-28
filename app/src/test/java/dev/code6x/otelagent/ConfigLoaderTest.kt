@@ -1,5 +1,6 @@
 package dev.code6x.otelagent
 
+import dev.code6x.otelagent.config.AgentConfig
 import dev.code6x.otelagent.config.ConfigException
 import dev.code6x.otelagent.config.ConfigLoader
 import dev.code6x.otelagent.config.CurrentUnit
@@ -29,11 +30,16 @@ class ConfigLoaderTest {
         assertEquals("", c.exporter.endpoint)
         assertEquals("http/protobuf", c.exporter.protocol)
         assertEquals(10, c.exporter.timeoutSeconds)
-        assertEquals(listOf("battery", "power", "boot", "network", "device", "thermal"), c.collectors.keys.toList())
-        c.collectors.values.forEach {
-            assertTrue(it.enabled)
+        assertEquals(
+            listOf("battery", "power", "boot", "network", "device", "thermal", "apps", "boot_reason", "batterystats", "thermal_sensors"),
+            c.collectors.keys.toList(),
+        )
+        c.collectors.forEach { (name, it) ->
+            // The Shizuku collectors are off by default (#4); the others are on.
+            assertEquals(name, name !in AgentConfig.SHIZUKU_COLLECTORS, it.enabled)
             assertEquals(60, it.intervalSeconds)
         }
+        assertTrue(c.appPackages.isEmpty())
         assertEquals(20L * 1024 * 1024, c.buffer.maxBytes)
         assertEquals(7L * 86400, c.buffer.maxAgeSeconds)
         assertTrue(c.attributes.isEmpty())
@@ -101,6 +107,16 @@ class ConfigLoaderTest {
         val l = local("""{"colectors": {"battery": {"enabled": false}}, "collectors": {"gps": {"enabled": true}}}""")
         assertEquals(2, l.warnings.size)
         assertTrue(l.config.collector("battery").enabled)
+    }
+
+    @Test fun appPackages() {
+        val c = local("""{"collectors": {"apps": {"enabled": true, "packages": " com.example.a, org.example.b_2 ,"}}}""").config
+        assertEquals(listOf("com.example.a", "org.example.b_2"), c.appPackages)
+        assertTrue(c.collector("apps").enabled)
+        assertRejected("""{"collectors": {"apps": {"packages": "com.example.a; rm -rf /"}}}""", "not a package name")
+        assertRejected("""{"collectors": {"apps": {"packages": "nodot"}}}""", "not a package name")
+        assertTrue(local("""{"collectors": {"apps": {"enabled": true}}}""").warnings.any { it.contains("packages is empty") })
+        assertTrue(local("""{"collectors": {"apps": {"enabled": false}}}""").warnings.isEmpty())
     }
 
     @Test fun badValuesAreRejected() {
