@@ -79,7 +79,11 @@ class BatteryStatsCollector(private val context: Context, private val intervalSe
             putLong("bs_boot_time", boot.bootTimeS)
         }.apply()
         val from = p.getLong("bs_gap_from", 0)
-        if (from == 0L) return emptyList()
+        if (from == 0L) {
+            // Nothing to send; still show when Shizuku is not ready.
+            ShizukuShell.state().let { if (it != ShizukuShell.State.READY) throw ShizukuShell.NotAvailable(it) }
+            return emptyList()
+        }
         val steps = ShellParsers.batteryHistory(ShizukuShell.run("dumpsys", "batterystats", "--history"), TimeZone.getDefault())
         logs = listOf(record(ShellParsers.summarize(steps, from, nowMs), from, nowMs))
         p.edit().remove("bs_gap_from").apply()
