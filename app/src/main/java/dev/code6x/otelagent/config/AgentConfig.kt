@@ -58,6 +58,8 @@ data class AgentConfig(
     val buffer: BufferConfig,
     val wakePolicy: WakePolicy,
     val batteryCurrentUnit: CurrentUnit = CurrentUnit.AUTO,
+    /** `collectors > apps > packages`: the packages the apps collector looks for. */
+    val appPackages: List<String> = emptyList(),
     val opamp: OpampConfig = OpampConfig(enabled = true, endpoint = ""),
 ) {
     fun collector(name: String): CollectorConfig =
@@ -65,7 +67,9 @@ data class AgentConfig(
 
     companion object {
         const val DEFAULT_INTERVAL = 60
-        val COLLECTORS = listOf("battery", "power", "boot", "network", "device", "thermal")
+        /** Collectors that run shell commands through Shizuku. All are off by default. */
+        val SHIZUKU_COLLECTORS = listOf("apps", "boot_reason", "batterystats", "thermal_sensors")
+        val COLLECTORS = listOf("battery", "power", "boot", "network", "device", "thermal") + SHIZUKU_COLLECTORS
     }
 }
 
