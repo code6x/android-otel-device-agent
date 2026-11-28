@@ -80,6 +80,10 @@ dependencies {
     // the spike ran on Android with.
     implementation("com.squareup.okhttp3:okhttp") { version { strictly("5.1.0") } }
 
+    // Shizuku (#4): shell-user commands for the optional collectors. The provider gets the binder.
+    implementation("dev.rikka.shizuku:api:13.1.5")
+    implementation("dev.rikka.shizuku:provider:13.1.5")
+
     testImplementation("junit:junit:4.13.2")
     // Android's org.json is a stub in unit tests; use the real one there.
     testImplementation("org.json:json:20240303")

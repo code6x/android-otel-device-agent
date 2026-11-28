@@ -1,0 +1,21 @@
+Battery History (0% used, 2412 used of 4096KB, 7 strings using 65):
+                    0 (14) RESET:TIME: 2026-11-28-15-40-01
+                    0 (2) 100 status=charging health=good plug=none temp=250 volt=5000 charge=10 modemRailChargemAh=0 wifiRailChargemAh=0 +running +wake_lock +sensor +wifi_radio +mobile_radio +screen +plugged data_conn=hspa phone_signal_strength=great brightness=medium +wifi wifi_signal_strength=4 wifi_suppl=completed top=u0a122:"com.android.launcher3"
+                    0 (2) 100 user=0:"0"
+                    0 (2) 100 userfg=0:"0"
+                    0 (2) 100 -plugged
+                 +9ms (2) 080
+                 Details: cpu=4370u+7910s
+                          /proc/stat=9040 usr, 12320 sys, 360 io, 410 irq, 150 sirq, 109130 idle (17.0% of 21m 54s 100ms), SubsystemPowerState SubsystemPowerState subsystem_0 name=CPU state_0 name=Idle time=6000 count=392 last entry=28000 state_1 name=Active time=6000 count=392 last entry=28000 subsystem_1 name=Display state_0 name=Off time=6000 count=392 last entry=28000 state_1 name=On time=6000 count=392 last entry=28000
+                +48ms (1) 080
+                +49ms (2) 080 stats=0:"reset"
+             +1s089ms (1) 080
+             +1s090ms (1) 080
+             +2s021ms (2) 080 stats=0:"battery-state"
+             +2s046ms (3) 080 +audio +est_capacity=1000:"audio"
+             +2s019ms (4) 080 plug=ac +plugged
+             +4s039ms (2) 081
+             +4s251ms (2) 081 conn=1:"CONNECTED"
+             +4s898ms (3) 081 -audio -est_capacity=1000:"audio"
+             +5s050ms (2) 100 +charging
+             +6s063ms (2) 100 stats=0:"dump"

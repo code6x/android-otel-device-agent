@@ -75,5 +75,13 @@
                 <action android:name="dev.code6x.otelagent.SET_CONFIG" />
             </intent-filter>
         </receiver>
+        <!-- Shizuku sends its binder to the app through this provider (#4). -->
+        <provider
+            android:name="rikka.shizuku.ShizukuProvider"
+            android:authorities="${applicationId}.shizuku"
+            android:enabled="true"
+            android:exported="true"
+            android:multiprocess="false"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
     </application>
 </manifest>
