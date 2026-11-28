@@ -19,4 +19,5 @@ object AgentState {
     @Volatile var queueBytes = 0L
     @Volatile var queueFiles = 0
     @Volatile var opampStatus = "off"
+    @Volatile var shizuku = "not used (no Shizuku collector is on)"
 }

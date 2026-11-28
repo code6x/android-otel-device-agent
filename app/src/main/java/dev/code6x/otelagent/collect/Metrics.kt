@@ -47,11 +47,17 @@ object Metrics {
     val THERMAL_STATUS = MetricDef("device.thermal.status", "1", "Thermal status: 0 none, 1 light, 2 moderate, 3 severe, 4 critical, 5 emergency, 6 shutdown")
     val THERMAL_HEADROOM = MetricDef("device.thermal.headroom", "1", "Thermal headroom; 1.0 is where severe throttling starts")
 
+    // Shizuku collectors (off by default)
+    val APP_RUNNING = MetricDef("device.app.running", "1", "1 when the app (package) has a running process")
+    val BOOT_REASON = MetricDef("device.boot.reason", "1", "Always 1; the attributes hold the boot and last shutdown reason")
+    val THERMAL_TEMPERATURE = MetricDef("device.thermal.temperature", "Cel", "Temperature of each thermal sensor")
+
     // the agent itself (sent with every reading)
     val AGENT_START_TIME = MetricDef("device.agent.start_time", "s", "Start time of the app process, Unix seconds; a new value is a new process")
     val AGENT_QUEUE_SIZE = MetricDef("device.agent.queue.size", "By", "Bytes waiting in the disk queue")
     val AGENT_QUEUE_DROPPED = MetricDef("device.agent.queue.dropped", "{file}", "Queue files dropped (size cap or max age) since the process started")
     val AGENT_WAKE = MetricDef("device.agent.wake", "1", "1 when the timer wakes the CPU for readings (wake_policy)")
+    val AGENT_SHIZUKU = MetricDef("device.agent.shizuku", "1", "1 for the current Shizuku state, 0 for the others; sent when a Shizuku collector is on")
 
     val ALL = listOf(
         BATTERY_CHARGE, BATTERY_VOLTAGE, BATTERY_TEMPERATURE, BATTERY_CURRENT, BATTERY_CHARGE_COUNTER,
@@ -61,7 +67,8 @@ object Metrics {
         NETWORK_CONNECTED, NETWORK_TYPE, WIFI_CONNECTED, WIFI_RSSI, WIFI_LINK_SPEED,
         MEMORY_LIMIT, MEMORY_USAGE, MEMORY_LOW, FS_LIMIT, FS_USAGE,
         THERMAL_STATUS, THERMAL_HEADROOM,
-        AGENT_START_TIME, AGENT_QUEUE_SIZE, AGENT_QUEUE_DROPPED, AGENT_WAKE,
+        APP_RUNNING, BOOT_REASON, THERMAL_TEMPERATURE,
+        AGENT_START_TIME, AGENT_QUEUE_SIZE, AGENT_QUEUE_DROPPED, AGENT_WAKE, AGENT_SHIZUKU,
     )
 }
 

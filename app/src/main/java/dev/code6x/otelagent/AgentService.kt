@@ -24,8 +24,12 @@ import dev.code6x.otelagent.collect.BatteryCollector
 import dev.code6x.otelagent.collect.BootCollector
 import dev.code6x.otelagent.collect.Collector
 import dev.code6x.otelagent.collect.Collectors
+import dev.code6x.otelagent.collect.LogEntry
+import dev.code6x.otelagent.collect.ShizukuShell
+import dev.code6x.otelagent.collect.states
 import dev.code6x.otelagent.collect.Metrics
 import dev.code6x.otelagent.collect.Reading
+import dev.code6x.otelagent.config.AgentConfig
 import dev.code6x.otelagent.config.ConfigLoader
 import dev.code6x.otelagent.config.ConfigStore
 import dev.code6x.otelagent.config.LoadedConfig
@@ -105,7 +109,7 @@ class AgentService : Service() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         store = ConfigStore(this)
-        collectors = Collectors.create(this) { loaded.config.batteryCurrentUnit }
+        collectors = Collectors.create(this) { loaded.config }
         val queueRoot = File(filesDir, "queue")
         metricQueue = FileQueue(File(queueRoot, "metrics"), 0, 0)
         logQueue = FileQueue(File(queueRoot, "logs"), 0, 0)
@@ -243,10 +247,22 @@ class AgentService : Service() {
                     val r = c.collect()
                     readings += r
                     AgentState.collectors[c.name] = AgentState.CollectorState(wall, r, null)
+                    queueLogs(c.takeLogs())
+                } catch (e: ShizukuShell.NotAvailable) {
+                    // Normal without Shizuku, or after a boot before Shizuku is started again.
+                    Log.w(TAG, "collector ${c.name}: ${e.message}")
+                    AgentState.collectors[c.name] = AgentState.CollectorState(wall, emptyList(), e.message)
                 } catch (e: Exception) {
                     Log.e(TAG, "collector ${c.name} failed", e)
                     AgentState.collectors[c.name] = AgentState.CollectorState(wall, emptyList(), e.toString())
                 }
+            }
+            if (AgentConfig.SHIZUKU_COLLECTORS.any { loaded.config.collector(it).enabled }) {
+                val state = ShizukuShell.state()
+                AgentState.shizuku = state.text
+                readings += states(Metrics.AGENT_SHIZUKU, "shizuku.state", ShizukuShell.State.entries.map { it.key }, setOf(state.key))
+            } else {
+                AgentState.shizuku = "not used (no Shizuku collector is on)"
             }
             readings += Reading(Metrics.AGENT_START_TIME, (AgentState.processStartMs / 1000).toDouble())
             readings += Reading(Metrics.AGENT_QUEUE_SIZE, metricQueue.sizeBytes().toDouble())
@@ -339,6 +355,18 @@ class AgentService : Service() {
             if (now.bootCount != null) putInt("boot_count", now.bootCount) else remove("boot_count")
             putLong("boot_time", now.bootTimeS)
         }.apply()
+    }
+
+    private fun queueLogs(logs: List<LogEntry>) {
+        if (logs.isEmpty() || loaded.config.exporter.logsEndpoint.isEmpty()) return
+        for (l in logs) {
+            try {
+                logQueue.add(encoder.log(l.event, l.body, l.attributes, l.timeMs, System.currentTimeMillis()))
+                Log.i(TAG, "log record queued: ${l.event}")
+            } catch (e: Exception) {
+                Log.e(TAG, "log record ${l.event} not queued", e)
+            }
+        }
     }
 
     private fun target(url: String): Target? =

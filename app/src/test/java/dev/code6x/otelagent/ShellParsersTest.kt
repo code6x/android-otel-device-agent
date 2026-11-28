@@ -1,5 +1,7 @@
 package dev.code6x.otelagent
 
+import dev.code6x.otelagent.collect.AppsCollector
+import dev.code6x.otelagent.collect.BatteryStatsCollector
 import dev.code6x.otelagent.collect.ShellParsers
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -76,5 +78,25 @@ class ShellParsersTest {
         val steps = ShellParsers.batteryHistory(h, utc)
         assertEquals(listOf(49, 48), steps.map { it.level })
         assertEquals(1000L, steps[1].timeMs - steps[0].timeMs)
+    }
+
+    @Test fun appsMapping() {
+        val r = AppsCollector.map(listOf("com.example.a", "com.example.b"), setOf("com.example.b:sync"))
+        assertEquals(listOf(0.0, 1.0), r.map { it.value })
+        assertEquals("com.example.b", r[1].attributes["app.package"])
+    }
+
+    @Test fun batteryRecord() {
+        val start = 1795880401000L
+        val s = ShellParsers.BatterySummary(start, start + 60_000, 80, 75, 70, 81, listOf(start + 1000 to "ac", start + 2000 to "none"))
+        val l = BatteryStatsCollector.record(s, start, start + 60_000)
+        assertEquals("device.battery.history", l.event)
+        assertEquals(start + 60_000, l.timeMs)
+        assertEquals("2026-11-28T15:40:01Z", l.attributes["device.agent.gap.start"])
+        assertEquals("70", l.attributes["device.battery.level.min"])
+        assertEquals("2026-11-28T15:40:02Z ac, 2026-11-28T15:40:03Z none", l.attributes["device.battery.plug.changes"])
+        assertTrue(l.body, l.body.contains("level 80% to 75%"))
+        val none = BatteryStatsCollector.record(null, start, start + 60_000)
+        assertTrue(none.body.startsWith("no battery history"))
     }
 }
