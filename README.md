@@ -28,6 +28,157 @@ and install it. Android 8.0 (API 26) or newer. Then:
 The service starts again by itself after a reboot and after an app update,
 if it was running before.
 
+## Quick start
+
+The app sends OTLP/HTTP protobuf, so any OTLP receiver works. Three examples
+follow. In every example:
+
+- Replace `HOST` with the address of your receiver. **The phone must be able
+  to reach it.** Plain `http://` has no encryption: use it only on a local
+  network you trust. For anything else use `https://`.
+- Import the app config as described in [Import the config](#import-the-config).
+- Use a short `interval` (for example `15`) while you test, then use a
+  longer one.
+
+### OpenTelemetry Collector
+
+Tested with `otel/opentelemetry-collector-contrib:0.165.0`.
+
+`otelcol.yaml`:
+
+```yaml
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+
+exporters:
+  debug:
+    verbosity: detailed
+  # Put your real exporter here (for example otlphttp or
+  # prometheusremotewrite), and add it to the two lists below.
+
+service:
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      exporters: [debug]
+    logs:
+      receivers: [otlp]
+      exporters: [debug]
+```
+
+```bash
+docker run -d -p 4318:4318 \
+  -v "$PWD/otelcol.yaml:/etc/otelcol-contrib/config.yaml:ro" \
+  otel/opentelemetry-collector-contrib:0.165.0
+```
+
+App config:
+
+```json
+{
+  "exporter": {
+    "endpoint": "http://HOST:4318/v1/metrics",
+    "logs_endpoint": "http://HOST:4318/v1/logs"
+  }
+}
+```
+
+Look in `docker logs`: you see the metric `hw.battery.charge` and, once after
+a start, a log record `device.boot`.
+
+### VictoriaMetrics
+
+Tested with `victoriametrics/victoria-metrics:v1.156.0` (single node).
+
+```bash
+docker run -d -p 8428:8428 victoriametrics/victoria-metrics:v1.156.0
+```
+
+App config:
+
+```json
+{
+  "exporter": { "endpoint": "http://HOST:8428/opentelemetry/v1/metrics" }
+}
+```
+
+VictoriaMetrics does not take OTLP logs, so there is no `logs_endpoint`.
+The boot log record is not sent.
+
+Metric names have dots, so put the name in a label match:
+
+```bash
+curl -G 'http://HOST:8428/api/v1/query' \
+  --data-urlencode 'query={__name__="hw.battery.charge"}'
+```
+
+You can also open `http://HOST:8428/vmui` in a browser and type the same query.
+
+### Grafana
+
+**With Grafana Alloy.** Tested with `grafana/alloy:v1.22.0`. This is a
+real-use config: Alloy gets the data from the phone and sends it on to
+Grafana Cloud. Set `OTLP_USERNAME` (your Grafana Cloud instance ID) and
+`OTLP_API_KEY` (an access policy token with the `metrics:write` and
+`logs:write` scopes) in Alloy's environment.
+
+```alloy
+otelcol.receiver.otlp "default" {
+  http {
+    endpoint = "0.0.0.0:4318"
+  }
+  output {
+    metrics = [otelcol.exporter.otlphttp.cloud.input]
+    logs    = [otelcol.exporter.otlphttp.cloud.input]
+  }
+}
+
+otelcol.exporter.otlphttp "cloud" {
+  client {
+    endpoint = "https://otlp-gateway-ZONE.grafana.net/otlp"
+    auth     = otelcol.auth.basic.cloud.handler
+  }
+}
+
+otelcol.auth.basic "cloud" {
+  client_auth {
+    username = sys.env("OTLP_USERNAME")
+    password = sys.env("OTLP_API_KEY")
+  }
+}
+```
+
+For your own Prometheus, replace the exporter with
+`otelcol.exporter.prometheus` and `prometheus.remote_write`
+([Alloy docs](https://grafana.com/docs/alloy/latest/)). The app config is
+the same as for the Collector (`http://HOST:4318/v1/metrics` and
+`/v1/logs`).
+
+Only the receiver part was tested: with `otelcol.exporter.debug` in place of
+the cloud exporter, Alloy logged the metrics from the app (see
+[docs/receiver-tests.md](docs/receiver-tests.md)). The Grafana Cloud part
+follows the Grafana docs and was not run.
+
+**Grafana Cloud direct** (no Alloy). The app can send straight to the
+Grafana Cloud OTLP gateway. In the Grafana Cloud portal, open your stack and
+**Configure** on the **OpenTelemetry** tile: it shows the zone and the
+instance ID, and it makes a token. The header value is `Basic ` and then
+the base64 of `instanceID:token` (`echo -n 'ID:TOKEN' | base64 -w0`). This
+is not tested.
+
+```json
+{
+  "exporter": {
+    "endpoint": "https://otlp-gateway-ZONE.grafana.net/otlp/v1/metrics",
+    "logs_endpoint": "https://otlp-gateway-ZONE.grafana.net/otlp/v1/logs",
+    "headers": { "Authorization": "Basic REPLACE_ME" }
+  }
+}
+```
+
 ## What it collects
 
 Each collector can be turned on or off, and has its own interval (default 60 s).
