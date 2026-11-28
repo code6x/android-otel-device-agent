@@ -1,1 +1,1 @@
-OTel Device Agent
+OTel device agent
