@@ -1,0 +1,37 @@
+name: Phone report
+description: How the app runs on your phone (gaps, settings that were needed, wrong values).
+labels: [phone]
+body:
+  - type: input
+    id: phone
+    attributes:
+      label: Phone model, Android version and vendor system
+      placeholder: Xiaomi ..., Android 15, HyperOS 2
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: App version
+    validations:
+      required: true
+  - type: checkboxes
+    id: setup
+    attributes:
+      label: Setup checklist items that are done
+      options:
+        - label: Battery optimisation off
+        - label: Alarms & reminders allowed
+        - label: Vendor setting (Autostart, background activity, ...)
+  - type: input
+    id: wake
+    attributes:
+      label: wake_policy
+      placeholder: when_charging
+  - type: textarea
+    id: what
+    attributes:
+      label: What you saw
+      description: For example gaps in the readings (how long, screen on or off, on battery or charger), or a value that looks wrong.
+    validations:
+      required: true
