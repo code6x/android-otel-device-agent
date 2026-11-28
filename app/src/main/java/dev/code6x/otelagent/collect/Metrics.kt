@@ -6,7 +6,7 @@ data class MetricDef(val name: String, val unit: String, val description: String
 /** One value read by a collector. */
 data class Reading(val def: MetricDef, val value: Double, val attributes: Map<String, String> = emptyMap())
 
-/** Every metric the app sends. The README has the same table. */
+/** Every metric the app sends. docs/metrics.md lists them all. */
 object Metrics {
     // battery
     val BATTERY_CHARGE = MetricDef("hw.battery.charge", "1", "Battery level, 0 to 1")

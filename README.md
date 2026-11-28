@@ -38,58 +38,34 @@ Names follow the OpenTelemetry semantic conventions where they exist
 (`hw.battery.*`, `system.memory.*`, `system.filesystem.*`, `system.uptime`),
 else `device.*`.
 
-| Collector | Name | Unit | Attributes | What |
-|---|---|---|---|---|
-| battery | `hw.battery.charge` | `1` | | Battery level, 0 to 1 (0.87 = 87 %) |
-| battery | `device.battery.voltage` | `V` | | Battery voltage |
-| battery | `device.battery.temperature` | `Cel` | | Battery temperature, °C |
-| battery | `device.battery.current` | `A` | | Battery current. The sign is kept as the phone gives it: positive is into the battery on most phones, but some phones (for example OnePlus) use the other sign. The unit of the raw value is chosen by `collectors.battery.current_unit`: see [Battery current unit](#battery-current-unit) |
-| battery | `device.battery.charge_counter` | `A.h` | | Remaining charge |
-| battery | `device.battery.cycle_count` | `{cycle}` | | Charge cycles (Android 14+, when the phone reports it) |
-| battery | `device.battery.status` | `1` | `battery.status`: `charging`, `discharging`, `not_charging`, `full`, `unknown` | 1 for the current status, 0 for the others |
-| battery | `device.battery.plug` | `1` | `battery.plug`: `ac`, `usb`, `wireless`, `dock`, `none` | 1 for the current power source, 0 for the others |
-| battery | `device.battery.health` | `1` | `battery.health`: `good`, `overheat`, `dead`, `over_voltage`, `failure`, `cold`, `unknown` | 1 for the current health, 0 for the others |
-| power | `device.screen.on` | `1` | | 1 when the screen is on |
-| power | `device.power.save_mode` | `1` | | 1 when battery saver is on |
-| power | `device.power.idle` | `1` | | 1 in idle (Doze) mode |
-| boot | `system.uptime` | `s` | | Time since boot, deep sleep included |
-| boot | `device.boot.count` | `{boot}` | | Boots since the phone was set up (`Settings.Global.BOOT_COUNT`) |
-| boot | `device.boot.time` | `s` | | Time of the last boot, Unix seconds |
-| boot | log record `device.boot` | | `device.boot.count`, `device.boot.time` | One OTLP log record per boot, at the boot time (needs `exporter.logs_endpoint`) |
-| network | `device.network.connected` | `1` | | 1 when there is an active network |
-| network | `device.network.type` | `1` | `network.connection.type`: `wifi`, `cell`, `wired`, `vpn`, `bluetooth` | 1 for each transport of the active network (a VPN over Wi-Fi is both `vpn` and `wifi`) |
-| network | `device.wifi.connected` | `1` | | 1 when Wi-Fi is connected |
-| network | `device.wifi.rssi` | `dBm` | | Wi-Fi signal strength |
-| network | `device.wifi.link_speed` | `Mbit/s` | | Wi-Fi link speed |
-| device | `system.memory.limit` | `By` | | Total RAM |
-| device | `system.memory.usage` | `By` | `system.memory.state`: `free` (available to apps), `used` | RAM |
-| device | `device.memory.low` | `1` | | 1 when the system is low on memory |
-| device | `system.filesystem.limit` | `By` | `system.filesystem.mountpoint`: `/data` | Size of `/data` |
-| device | `system.filesystem.usage` | `By` | `system.filesystem.mountpoint`: `/data`; `system.filesystem.state`: `free`, `used` | Space on `/data` |
-| thermal | `device.thermal.status` | `1` | | 0 none, 1 light, 2 moderate, 3 severe, 4 critical, 5 emergency, 6 shutdown (Android 10+) |
-| thermal | `device.thermal.headroom` | `1` | | Thermal headroom; 1.0 is where severe throttling starts (Android 11+, when the phone reports it) |
-| apps ¹ | `device.app.running` | `1` | `app.package` | 1 when the package has a running process (its main process or a `package:name` one), from `ps` |
-| boot_reason ¹ | `device.boot.reason` | `1` | `device.boot.reason`, `device.shutdown.reason` | Always 1; the reason of this boot (`sys.boot.reason`) and of the last shutdown (`sys.boot.reason.last`) |
-| thermal_sensors ¹ | `device.thermal.temperature` | `Cel` | `device.thermal.sensor`, `device.thermal.type` | Each sensor of `dumpsys thermalservice` ("Current temperatures from HAL") |
-| (Shizuku on) | `device.agent.shizuku` | `1` | `shizuku.state`: `ready`, `not_running`, `no_permission`, `too_old` | 1 for the current Shizuku state; sent when a Shizuku collector is on |
-| (always) | `device.agent.start_time` | `s` | | Start time of the app process, Unix seconds. A new value means a new process |
-| (always) | `device.agent.queue.size` | `By` | | Bytes waiting in the disk queue |
-| (always) | `device.agent.queue.dropped` | `{file}` | | Queue files dropped by the size cap or max age since the process started |
-| (always) | `device.agent.wake` | `1` | | 1 when the timer wakes the CPU for readings (see `wake_policy`) |
+The full list of every metric and log record (name, unit, attributes, the
+Android API it is read from, minimum Android version) is in the
+**[metrics reference](docs/metrics.md)**. The collectors:
 
-The `device.agent.*` metrics are sent with every reading.
+- `battery` (on): level, voltage, temperature, current, charge counter, cycle count, status, power source, health
+- `power` (on): screen on, battery saver, idle (Doze) mode
+- `boot` (on): uptime, boot count, boot time; one log record per boot (needs `exporter.logs_endpoint`)
+- `network` (on): active network and its transports, Wi-Fi connected, signal strength, link speed
+- `device` (on): RAM and the space on `/data`
+- `thermal` (on): thermal status and headroom
+- `apps` ¹ (off): is each configured package running
+- `boot_reason` ¹ (off): boot and last shutdown reason; one log record per boot
+- `batterystats` ¹ (off): no metric; one log record after a boot or a gap, with the battery history
+- `thermal_sensors` ¹ (off): temperature of each sensor
+
+The app also sends its own `device.agent.*` metrics (start time, queue size,
+dropped queue files, wake, Shizuku state) with every reading.
 
 ¹ A Shizuku collector: off by default, see [Shizuku collectors](#shizuku-collectors-optional).
-`batterystats` (also Shizuku) sends no metric, only log records.
 
 The app does **not** collect the Wi-Fi name (SSID) or BSSID: Android needs the
 location permission for them.
 
-**Resource attributes** (on every metric and log record): `service.name`
-(`android-otel-device-agent`), `service.version`, `device.id` (from the
-config; left out when empty), `device.model.identifier`, `device.manufacturer`,
-`os.name`, `os.type`, `os.version`, `telemetry.sdk.*`, and the free-form
-attributes from `resource.attributes` in the config. There is **no**
+**Resource attributes** (on every metric and log record) include
+`service.name`, `service.version`, `device.id` (from the config; left out when
+empty), the device model and maker, the OS, and the free-form attributes from
+`resource.attributes` in the config. The full list is in the
+[metrics reference](docs/metrics.md#resource-attributes). There is **no**
 `app.installation.id` (a random id per install: it is private, and it makes a
 new series after each reinstall).
 
@@ -98,7 +74,7 @@ new series after each reinstall).
 VictoriaMetrics takes OTLP at `/opentelemetry/v1/metrics`. It keeps the names
 as they are, with dots, so a query must quote them:
 `{__name__="hw.battery.charge", device.id="phone-1"}`. It drops the units, so
-use the table above. Every resource attribute becomes a label.
+use the [metrics reference](docs/metrics.md). Every resource attribute becomes a label.
 
 ## Config
 

@@ -1,6 +1,5 @@
 name: Phone report
 description: How the app runs on your phone (gaps, settings that were needed, wrong values).
-labels: [phone]
 body:
   - type: input
     id: phone
