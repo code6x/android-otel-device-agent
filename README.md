@@ -124,7 +124,11 @@ default. Example (all keys):
     "boot":    { "enabled": true, "interval": 300 },
     "network": { "enabled": true, "interval": 60 },
     "device":  { "enabled": true, "interval": 300 },
-    "thermal": { "enabled": false }
+    "thermal": { "enabled": false },
+    "apps":            { "enabled": false, "interval": 60, "packages": "com.example.a, com.example.b" },
+    "boot_reason":     { "enabled": false, "interval": 60 },
+    "batterystats":    { "enabled": false, "interval": 60 },
+    "thermal_sensors": { "enabled": false, "interval": 60 }
   },
   "buffer": {
     "max_bytes": 20971520,

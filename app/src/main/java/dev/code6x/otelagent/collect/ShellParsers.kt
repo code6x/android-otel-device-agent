@@ -73,14 +73,16 @@ object ShellParsers {
      * each `TIME:` event (phone local time, in [tz]) sets the wall clock for the next steps.
      * Steps before the first `TIME:` are not returned (their wall time is not known).
      */
-    fun batteryHistory(dump: String, tz: TimeZone): List<BatteryStep> {
+    fun batteryHistory(dump: String, tz: TimeZone): List<BatteryStep> = batteryHistory(dump.lineSequence(), tz).toList()
+
+    /** As above, one line at a time (the output can be many MB on a real phone). */
+    fun batteryHistory(lines: Sequence<String>, tz: TimeZone): Sequence<BatteryStep> = sequence {
         val fmt = SimpleDateFormat("yyyy-MM-dd-HH-mm-ss", Locale.ROOT).apply { timeZone = tz }
-        val out = mutableListOf<BatteryStep>()
         var offset = 0L
         var anchor: Pair<Long, Long>? = null // (offset, wall ms) of the last TIME: event
         var plugged = false
         var plug = "none"
-        for (line in dump.lines()) {
+        for (line in lines) {
             val m = HISTORY_LINE.find(line) ?: continue
             val t = m.groupValues[1]
             if (t != "0") offset = durationMs(t)
@@ -95,9 +97,8 @@ object ShellParsers {
             }
             val a = anchor ?: continue
             val level = m.groupValues[2].toIntOrNull() ?: continue
-            out += BatteryStep(a.second + (offset - a.first), level, plugged, if (plugged) plug else "none")
+            yield(BatteryStep(a.second + (offset - a.first), level, plugged, if (plugged) plug else "none"))
         }
-        return out
     }
 
     data class BatterySummary(
@@ -112,9 +113,15 @@ object ShellParsers {
     )
 
     /** What happened in [fromMs, toMs]. Null when the history has no step in that time. */
-    fun summarize(steps: List<BatteryStep>, fromMs: Long, toMs: Long): BatterySummary? {
-        val before = steps.lastOrNull { it.timeMs < fromMs }
-        val inside = steps.filter { it.timeMs in fromMs..toMs }
+    fun summarize(steps: List<BatteryStep>, fromMs: Long, toMs: Long): BatterySummary? = summarize(steps.asSequence(), fromMs, toMs)
+
+    /** As above, in one pass; only the steps in the time are kept. */
+    fun summarize(steps: Sequence<BatteryStep>, fromMs: Long, toMs: Long): BatterySummary? {
+        var before: BatteryStep? = null
+        val inside = mutableListOf<BatteryStep>()
+        for (s in steps) {
+            if (s.timeMs < fromMs) before = s else if (s.timeMs <= toMs) inside += s
+        }
         if (inside.isEmpty()) return null
         val changes = mutableListOf<Pair<Long, String>>()
         var last = before?.plug

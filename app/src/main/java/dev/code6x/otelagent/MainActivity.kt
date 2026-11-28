@@ -167,7 +167,13 @@ class MainActivity : Activity() {
             if (st == ShizukuShell.State.NO_PERMISSION) {
                 setupBox.addView(Button(this).apply {
                     text = "Ask for Shizuku permission"
-                    setOnClickListener { Shizuku.requestPermission(ShizukuShell.PERMISSION_REQUEST) }
+                    setOnClickListener {
+                        try {
+                            Shizuku.requestPermission(ShizukuShell.PERMISSION_REQUEST)
+                        } catch (e: RuntimeException) {
+                            Toast.makeText(this@MainActivity, "Shizuku: ${e.message}", Toast.LENGTH_LONG).show()
+                        }
+                    }
                 })
             }
         }

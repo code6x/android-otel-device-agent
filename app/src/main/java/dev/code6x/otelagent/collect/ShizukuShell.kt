@@ -34,11 +34,15 @@ object ShizukuShell {
     /** Thrown when a collector cannot run because Shizuku is not [State.READY]. */
     class NotAvailable(val state: State) : IOException("not available: ${state.text}")
 
+    /** Runs [cmd] (no shell; the first item is the program) and returns its standard output. */
+    fun run(vararg cmd: String, timeoutMs: Long = 10_000): String = read(*cmd, timeoutMs = timeoutMs) { it.joinToString("\n") }
+
     /**
-     * Runs [cmd] (no shell; the first item is the program) and returns its standard output.
-     * Throws [NotAvailable] when Shizuku is not ready, [IOException] on a time-out or failure.
+     * Runs [cmd] and gives its output lines to [parse], so a long output is not held in memory.
+     * Throws [NotAvailable] when Shizuku is not ready, [IOException] on a time-out, an exit code
+     * other than 0, or a failure.
      */
-    fun run(vararg cmd: String, timeoutMs: Long = 10_000): String {
+    fun <T> read(vararg cmd: String, timeoutMs: Long = 10_000, parse: (Sequence<String>) -> T): T {
         val s = state()
         if (s != State.READY) throw NotAvailable(s)
         // Shizuku.newProcess is private in API 13; the service binder has the same call.
@@ -52,21 +56,45 @@ object ShizukuShell {
             process.outputStream?.close()
             // Error output is read and dropped, so the command cannot block on a full pipe.
             process.errorStream?.let { err ->
-                Thread { ParcelFileDescriptor.AutoCloseInputStream(err).use { it.readBytes() } }.apply { isDaemon = true; start() }
+                Thread {
+                    try {
+                        ParcelFileDescriptor.AutoCloseInputStream(err).use { it.copyTo(NullOutput) }
+                    } catch (_: IOException) {
+                    }
+                }.apply { isDaemon = true; start() }
             }
             val out = ParcelFileDescriptor.AutoCloseInputStream(process.inputStream)
-            var text = ""
-            val reader = Thread { text = out.bufferedReader().use { it.readText() } }.apply { isDaemon = true; start() }
+            var result: Result<T>? = null
+            val reader = Thread {
+                result = try {
+                    Result.success(out.bufferedReader().useLines(parse))
+                } catch (e: Throwable) {
+                    // Also OutOfMemoryError: an uncaught error here would end the app.
+                    Result.failure(e)
+                }
+            }.apply { isDaemon = true; start() }
             reader.join(timeoutMs)
             if (reader.isAlive || !process.waitForTimeout(1000, TimeUnit.MILLISECONDS.toString())) {
+                try {
+                    out.close()
+                } catch (_: IOException) {
+                }
                 throw IOException("${cmd[0]}: no answer in $timeoutMs ms")
             }
-            return text
+            val r = result!!.getOrElse { throw IOException("${cmd[0]}: output not read: $it", it) }
+            val code = process.exitValue()
+            if (code != 0) throw IOException("${cmd[0]}: exit code $code")
+            return r
         } finally {
             try {
                 process.destroy()
             } catch (_: Exception) {
             }
         }
+    }
+
+    private object NullOutput : java.io.OutputStream() {
+        override fun write(b: Int) {}
+        override fun write(b: ByteArray, off: Int, len: Int) {}
     }
 }
