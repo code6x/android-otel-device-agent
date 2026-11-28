@@ -86,8 +86,8 @@ App config:
 }
 ```
 
-Look in `docker logs`: you see the metric `hw.battery.charge` and, once after
-a start, a log record `device.boot`.
+Look in `docker logs`: you see the metric `hw.battery.charge` and, once per
+phone boot (the first time the app runs after a boot), a log record `device.boot`.
 
 ### VictoriaMetrics
 
@@ -138,7 +138,7 @@ otelcol.receiver.otlp "default" {
 
 otelcol.exporter.otlphttp "cloud" {
   client {
-    endpoint = "https://otlp-gateway-ZONE.grafana.net/otlp"
+    endpoint = "https://otlp-gateway-prod-REGION.grafana.net/otlp"
     auth     = otelcol.auth.basic.cloud.handler
   }
 }
@@ -164,7 +164,7 @@ follows the Grafana docs and was not run.
 
 **Grafana Cloud direct** (no Alloy). The app can send straight to the
 Grafana Cloud OTLP gateway. In the Grafana Cloud portal, open your stack and
-**Configure** on the **OpenTelemetry** tile: it shows the zone and the
+**Configure** on the **OpenTelemetry** tile: it shows the OTLP endpoint URL (use it in place of the URLs below), the
 instance ID, and it makes a token. The header value is `Basic ` and then
 the base64 of `instanceID:token` (`echo -n 'ID:TOKEN' | base64 -w0`). This
 is not tested.
@@ -172,8 +172,8 @@ is not tested.
 ```json
 {
   "exporter": {
-    "endpoint": "https://otlp-gateway-ZONE.grafana.net/otlp/v1/metrics",
-    "logs_endpoint": "https://otlp-gateway-ZONE.grafana.net/otlp/v1/logs",
+    "endpoint": "https://otlp-gateway-prod-REGION.grafana.net/otlp/v1/metrics",
+    "logs_endpoint": "https://otlp-gateway-prod-REGION.grafana.net/otlp/v1/logs",
     "headers": { "Authorization": "Basic REPLACE_ME" }
   }
 }

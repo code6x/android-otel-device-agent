@@ -100,7 +100,7 @@ level=info msg=Metrics component_id=otelcol.exporter.debug.default resource_metr
 ```
 
 `hw.battery.charge` was in 8 batches. The log record `device.boot` was not
-seen in this run: the app sends it once per start, and it was already sent
+seen in this run: the app sends it once per phone boot, and it was already sent
 in the earlier tests. Logs through the receiver were shown with the
 Collector.
 
