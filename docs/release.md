@@ -70,7 +70,8 @@ To check a release (from v0.2.0 on; v0.1.0 was built before this was done):
 ```bash
 git checkout vX.Y.Z
 ./gradlew :app:assembleRelease -PversionName=X.Y.Z   # JDK 17, no KEYSTORE_FILE
-pip install apksigcopier
+gh release download vX.Y.Z -R code6x/android-otel-device-agent -p '*.apk'
+pip install apksigcopier   # it needs apksigner from the Android build-tools in PATH
 apksigcopier compare --unsigned android-otel-device-agent-X.Y.Z.apk \
   app/build/outputs/apk/release/app-release-unsigned.apk && echo same
 ```

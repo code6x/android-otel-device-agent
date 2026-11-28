@@ -153,7 +153,8 @@ otelcol.auth.basic "cloud" {
 
 For your own Prometheus, replace the exporter with
 `otelcol.exporter.prometheus` and `prometheus.remote_write`
-([Alloy docs](https://grafana.com/docs/alloy/latest/)). The app config is
+([Alloy docs](https://grafana.com/docs/alloy/latest/)). Prometheus takes no
+logs: remove the `logs` line, or send logs to a Loki exporter. The app config is
 the same as for the Collector (`http://HOST:4318/v1/metrics` and
 `/v1/logs`).
 
